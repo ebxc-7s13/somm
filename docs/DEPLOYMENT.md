@@ -12,8 +12,10 @@ SOMM is one Node.js process serving the API, the WebSocket endpoint and the buil
 
 Status (2026-10-14): the Neon database exists (project `somm`, region AWS Singapore) and the production bundle was
 verified against it — migrations applied, then sign-up → CSV import → profile → map → library → Trees → account
-deletion all succeeded, and the deletion left no user, track, playlist or session rows. The Render service and the
-first APK build are set up by the repository owner (account sign-up cannot be automated); the steps are below.
+deletion all succeeded, and the deletion left no user, track, playlist or session rows. A test run of the APK workflow
+(manual run, not published) built and signed a 2.7 MB APK in about 2 minutes; `apksigner` confirmed the release
+certificate. The Render service is set up by the repository owner (account sign-up cannot be automated); the steps
+are below.
 
 ## 1. Database (Neon)
 
@@ -76,7 +78,8 @@ The workflow [`.github/workflows/android.yml`](../.github/workflows/android.yml)
 It installs JDK 21 and the Android build tools on GitHub’s runner, syncs the shell, builds `assembleRelease` signed
 with the keystore, verifies the signature with `apksigner`, uploads the APK as a workflow artifact and publishes it as
 a GitHub Release (`android-<run number>`). The version code is the run number, so each APK installs over the last one.
-It runs on demand (**Actions → Android APK → Run workflow**) and on pushes that change the Android shell.
+It runs on demand (**Actions → Android APK → Run workflow**) and on pushes that change the Android shell. A manual
+run can override the URL and skip publishing, which is useful for checking the pipeline.
 
 **Keep a copy of the keystore.** GitHub secrets cannot be read back. Android only accepts an update signed with the
 same key; with a new key, users must uninstall the old app first. To create a keystore without installing Java

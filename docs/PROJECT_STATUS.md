@@ -31,7 +31,7 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | PostgreSQL storage (Neon in production, PGlite locally) | ✅ | all tests on PGlite; production bundle verified against Neon |
 | Installable web app (PWA: manifest, icons, service worker, install prompt) | 🟡 | served and sandbox-tested; installing on a device not yet verified |
 | Free hosting (Render Blueprint + Neon) | 🟡 | Neon database live; Render service needs the owner's Render account (`render.yaml` ready) |
-| Android APK (Capacitor shell, cloud-built and signed) | 🟡 | workflow ready; first build needs `SOMM_APP_URL` after the Render deploy |
+| Android APK (Capacitor shell, cloud-built and signed) | 🟡 | test build signed and verified in GitHub Actions; the real build needs `SOMM_APP_URL` after the Render deploy; not yet installed on a phone |
 
 ## Known limitations
 
