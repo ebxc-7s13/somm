@@ -220,7 +220,9 @@ with consented engagement data; add Playwright tests; deploy behind HTTPS with b
 
 ## 16. Git status
 
-* Branch: `main` (initialised during this build).
-* Commits: **none** — all work is uncommitted (17 untracked top-level entries). `data/`, `node_modules/`, `dist/` and
-  `.env` are confirmed ignored by `.gitignore`.
-* Nothing was pushed; no remote is configured.
+* Branch: `main`, pushed to the private GitHub repository <https://github.com/ebxc-7s13/somm> (2026-10-14).
+* History: logical commits — tooling scaffold, analysis engine, server, client, documentation, CI update.
+  Author identity uses the GitHub no-reply address (repository-local git config).
+* `data/`, `node_modules/`, `dist/` and `.env` are ignored; line endings are normalised to LF (`.gitattributes`).
+* CI: GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, lint, tests and build on every push and pull
+  request — green on the pushed commits (Ubuntu runner, Node 22).
