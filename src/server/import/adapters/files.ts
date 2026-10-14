@@ -5,14 +5,15 @@
  * Nothing here fetches URLs found inside files (M3U/XSPF locations are ignored),
  * and XML input with DTDs/entities is rejected outright.
  */
+import { restoreCell } from '../../../shared/csv';
 import { cleanDisplayText, splitArtistList } from '../../../shared/normalize';
 import { tagToAttribute } from '../../../shared/taxonomy';
 import type { AttributeCategory } from '../../../shared/types';
 import { IMPORT_LIMITS, ImportError, type ImportRowError, type RawEntry, type RawPlaylist } from '../types';
 
-function assertSize(text: string) {
-  if (Buffer.byteLength(text, 'utf8') > IMPORT_LIMITS.maxBytes) {
-    throw new ImportError(`File is larger than ${IMPORT_LIMITS.maxBytes / 1024 / 1024} MB.`, 'too_large', 413);
+function assertSize(text: string, maxBytes = IMPORT_LIMITS.maxBytes) {
+  if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+    throw new ImportError(`File is larger than ${maxBytes / 1024 / 1024} MB.`, 'too_large', 413);
   }
 }
 
@@ -179,7 +180,8 @@ export function parseCsv(text: string, fileName = 'Imported CSV'): RawPlaylist {
   const errors: ImportRowError[] = [];
   body.forEach((cells, i) => {
     const row = i + 2; // 1-based, header is row 1
-    const get = (key: string) => (headers[key] !== undefined ? cells[headers[key]!] : undefined);
+    // restoreCell undoes the apostrophe SOMM's converter adds in front of formula-like cells.
+    const get = (key: string) => (headers[key] !== undefined ? restoreCell(cells[headers[key]!] ?? '') : undefined);
     const title = field(get('title'));
     const artistRaw = field(get('artist'));
     if (!title || !artistRaw) {
@@ -241,9 +243,29 @@ const LINE_PATTERNS: [RegExp, (m: RegExpMatchArray) => { artist: string; title: 
   [/^(.+?)\s+by\s+(.+)$/i, (m) => ({ title: m[1]!, artist: m[2]! })],
 ];
 
-/** Pasted lists: "Artist - Title", "Title by Artist", or "Title<TAB>Artist", one per line. */
+/** True when the first line is a header row naming title and artist columns (tab, comma or semicolon separated). */
+export function looksLikeTable(text: string): boolean {
+  const first = text.trimStart().split(/\r?\n/, 1)[0] ?? '';
+  if (!/[\t,;]/.test(first)) return false;
+  const headers = mapHeaders(parseCsvRows(first)[0] ?? []);
+  return headers.title !== undefined && headers.artist !== undefined;
+}
+
+const LINK_ONLY: [RegExp, string][] = [
+  [
+    /^(?:https:\/\/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?track\/|spotify:track:)/,
+    'These are Spotify song links, which contain no song names. Spotify only shares names through its API. Download your data from Spotify (Account → Privacy → Download your data) and convert Playlist1.json, use an Exportify CSV, or copy the song names instead.',
+  ],
+  [
+    /^https:\/\/(?:www\.|music\.|m\.)?youtube\.com\/watch|^https:\/\/youtu\.be\//,
+    'These are YouTube video links, which contain no song names. Use the YouTube playlist option if this server has a YouTube API key, or paste “Artist - Title” lines instead.',
+  ],
+];
+
+/** Pasted lists: "Artist - Title", "Title by Artist", or "Title<TAB>Artist", one per line. A pasted table with a header row is read as CSV. */
 export function parseText(text: string, name = 'Pasted list'): RawPlaylist {
   assertSize(text);
+  if (looksLikeTable(text)) return parseCsv(text.trimStart(), name);
   const lines = text.split(/\r?\n/);
   const entries: RawEntry[] = [];
   const errors: ImportRowError[] = [];
@@ -265,7 +287,13 @@ export function parseText(text: string, name = 'Pasted list'): RawPlaylist {
     errors.push({ row: i + 1, message: 'Could not read this line. Use “Artist - Title”.' });
   });
   if (entries.length > IMPORT_LIMITS.maxEntries) throw new ImportError(`Imports are limited to ${IMPORT_LIMITS.maxEntries} tracks.`, 'too_large', 413);
-  if (entries.length === 0) throw new ImportError('No tracks found. Paste one “Artist - Title” per line.', 'empty');
+  if (entries.length === 0) {
+    const nonEmpty = lines.map((l) => l.trim()).filter(Boolean);
+    for (const [re, message] of LINK_ONLY) {
+      if (nonEmpty.length > 0 && nonEmpty.filter((l) => re.test(l)).length >= nonEmpty.length / 2) throw new ImportError(message, 'invalid_input');
+    }
+    throw new ImportError('No tracks found. Paste one “Artist - Title” per line.', 'empty');
+  }
   return { name: field(name) || 'Pasted list', provider: 'text', entries, errors, notes: [] };
 }
 
@@ -403,34 +431,76 @@ interface JsonTrack {
   genre?: unknown;
   explicit?: unknown;
   bpm?: unknown;
+  uri?: unknown;
 }
 
-/** SOMM JSON export, or any array of {title, artist(s), ...} objects. */
-export function parseJson(text: string, fileName = 'Imported JSON'): RawPlaylist {
-  assertSize(text);
-  let data: unknown;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new ImportError('The file is not valid JSON.', 'invalid_input');
+interface JsonList {
+  name: string;
+  items: unknown[];
+}
+
+/** Finds playlists in the JSON shapes SOMM understands. */
+function jsonLists(data: unknown, fallbackName: string): JsonList[] {
+  if (Array.isArray(data)) return [{ name: fallbackName, items: data }];
+  if (!data || typeof data !== 'object') throw new ImportError('Expected an array of tracks or an object with a "tracks" array.', 'invalid_input');
+  const obj = data as { name?: unknown; tracks?: unknown; items?: unknown; playlists?: unknown };
+  const name = typeof obj.name === 'string' && field(obj.name) ? field(obj.name) : fallbackName;
+  // SOMM JSON and Spotify's YourLibrary.json use "tracks"; Spotify's Playlist1.json uses playlists[].items.
+  if (Array.isArray(obj.tracks)) return [{ name, items: obj.tracks }];
+  if (Array.isArray(obj.items)) return [{ name, items: obj.items }];
+  if (Array.isArray(obj.playlists)) {
+    return obj.playlists
+      .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+      .map((p, i) => ({
+        name: typeof p.name === 'string' && field(p.name) ? field(p.name) : `${fallbackName} ${i + 1}`,
+        items: Array.isArray(p.tracks) ? p.tracks : Array.isArray(p.items) ? p.items : [],
+      }));
   }
-  let name = field(fileName.replace(/\.json$/i, '')) || 'Imported JSON';
-  let list: unknown = data;
-  if (data && typeof data === 'object' && !Array.isArray(data)) {
-    const obj = data as { name?: unknown; tracks?: unknown; playlists?: unknown };
-    if (typeof obj.name === 'string') name = field(obj.name) || name;
-    list = Array.isArray(obj.tracks)
-      ? obj.tracks
-      : Array.isArray(obj.playlists)
-        ? (obj.playlists as { tracks?: unknown[] }[]).flatMap((p) => (Array.isArray(p.tracks) ? p.tracks : []))
-        : null;
+  throw new ImportError('Expected an array of tracks or an object with a "tracks" array.', 'invalid_input');
+}
+
+/** spotify:local:Artist:Album:Title:seconds (URL-encoded, "+" for spaces). */
+function spotifyLocalTrack(uri: string): JsonTrack | null {
+  const parts = uri.split(':');
+  if (parts.length < 6 || parts[0] !== 'spotify' || parts[1] !== 'local') return null;
+  const decode = (v: string | undefined) => {
+    try {
+      return decodeURIComponent((v ?? '').replace(/\+/g, ' '));
+    } catch {
+      return '';
+    }
+  };
+  return { artist: decode(parts[2]), album: decode(parts[3]), title: decode(parts[4]), duration: parts[5] };
+}
+
+/** Normalises one item: Spotify export items wrap the song in "track" (or hold an episode/audiobook instead). */
+function jsonItem(item: unknown): { track: JsonTrack; skip?: string } {
+  if (!item || typeof item !== 'object') return { track: {} };
+  const o = item as Record<string, unknown>;
+  if (o.track && typeof o.track === 'object') {
+    const t = o.track as Record<string, unknown>;
+    return { track: { title: t.trackName ?? t.name, artist: t.artistName ?? t.artist, album: t.albumName ?? t.album, uri: t.trackUri ?? t.uri } };
   }
-  if (!Array.isArray(list)) throw new ImportError('Expected an array of tracks or an object with a "tracks" array.', 'invalid_input');
-  if (list.length > IMPORT_LIMITS.maxEntries) throw new ImportError(`Imports are limited to ${IMPORT_LIMITS.maxEntries} tracks.`, 'too_large', 413);
+  if (typeof o.track === 'string') return { track: { title: o.track, artist: o.artist, album: o.album, uri: o.uri } };
+  if (o.localTrack && typeof o.localTrack === 'object') {
+    const uri = (o.localTrack as { uri?: unknown }).uri;
+    const local = typeof uri === 'string' ? spotifyLocalTrack(uri) : null;
+    if (local) return { track: local };
+  }
+  if (o.episode || o.audiobook) return { track: {}, skip: 'Podcast episodes and audiobooks are not songs.' };
+  return { track: o as JsonTrack };
+}
+
+function jsonPlaylist(list: JsonList, provider: 'json', sourceRef: string): RawPlaylist {
+  if (list.items.length > IMPORT_LIMITS.maxEntries) throw new ImportError(`Imports are limited to ${IMPORT_LIMITS.maxEntries} tracks per playlist.`, 'too_large', 413);
   const entries: RawEntry[] = [];
   const errors: ImportRowError[] = [];
-  list.forEach((item, i) => {
-    const t = (item ?? {}) as JsonTrack;
+  list.items.forEach((item, i) => {
+    const { track: t, skip } = jsonItem(item);
+    if (skip) {
+      errors.push({ row: i + 1, message: skip });
+      return;
+    }
     const title = field(typeof t.title === 'string' ? t.title : typeof t.name === 'string' ? t.name : '');
     const artists = Array.isArray(t.artists)
       ? t.artists
@@ -445,6 +515,7 @@ export function parseJson(text: string, fileName = 'Imported JSON'): RawPlaylist
       return;
     }
     const genres = Array.isArray(t.genres) ? t.genres.filter((g): g is string => typeof g === 'string') : typeof t.genre === 'string' ? splitList(t.genre) : [];
+    const providerIds = (typeof t.uri === 'string' ? providerIdFromUri(t.uri) : undefined) ?? [];
     entries.push({
       row: i + 1,
       title,
@@ -458,11 +529,64 @@ export function parseJson(text: string, fileName = 'Imported JSON'): RawPlaylist
       genreKind: 'user',
       genreSource: 'your file',
       bpm: typeof t.bpm === 'number' ? parseBpm(String(t.bpm)) : null,
+      providerIds,
+      sourceUrl: providerIds[0]?.url ?? null,
       parseConfidence: 'high',
     });
   });
+  return { name: list.name, provider, sourceRef, entries, errors, notes: [] };
+}
+
+function readJson(text: string, maxBytes?: number): unknown {
+  assertSize(text, maxBytes);
+  try {
+    return JSON.parse(text.replace(/^\uFEFF/, ''));
+  } catch {
+    throw new ImportError('The file is not valid JSON.', 'invalid_input');
+  }
+}
+
+/**
+ * One playlist per playlist in the file (Spotify's Playlist1.json holds all of an
+ * account's playlists). Used by the converter, which may accept larger files.
+ */
+export function parseJsonPlaylists(text: string, fileName = 'Imported JSON', maxBytes?: number): RawPlaylist[] {
+  const fallback = field(fileName.replace(/\.json$/i, '')) || 'Imported JSON';
+  const lists = jsonLists(readJson(text, maxBytes), fallback);
+  const playlists = lists.map((l) => jsonPlaylist(l, 'json', field(fileName)));
+  if (!playlists.some((p) => p.entries.length > 0)) throw new ImportError('No valid tracks found in the JSON file.', 'empty');
+  return playlists;
+}
+
+/** SOMM JSON export, Spotify account-data exports, or any array of {title, artist(s), ...} objects — as one playlist. */
+export function parseJson(text: string, fileName = 'Imported JSON'): RawPlaylist {
+  const fallback = field(fileName.replace(/\.json$/i, '')) || 'Imported JSON';
+  const lists = jsonLists(readJson(text), fallback);
+  if (lists.length === 1) {
+    const one = jsonPlaylist(lists[0]!, 'json', field(fileName));
+    if (one.entries.length === 0) throw new ImportError('No valid tracks found in the JSON file.', 'empty');
+    return one;
+  }
+  // Several playlists: combine them, numbering rows across the whole file.
+  const entries: RawEntry[] = [];
+  const errors: ImportRowError[] = [];
+  let offset = 0;
+  for (const list of lists) {
+    const p = jsonPlaylist(list, 'json', field(fileName));
+    entries.push(...p.entries.map((e) => ({ ...e, row: e.row + offset })));
+    errors.push(...p.errors.map((e) => ({ ...e, row: e.row + offset })));
+    offset += list.items.length;
+  }
+  if (entries.length > IMPORT_LIMITS.maxEntries) throw new ImportError(`Imports are limited to ${IMPORT_LIMITS.maxEntries} tracks.`, 'too_large', 413);
   if (entries.length === 0) throw new ImportError('No valid tracks found in the JSON file.', 'empty');
-  return { name, provider: 'json', sourceRef: field(fileName), entries, errors, notes: [] };
+  return {
+    name: fallback,
+    provider: 'json',
+    sourceRef: field(fileName),
+    entries,
+    errors,
+    notes: [`This file contains ${lists.length} playlists; they were combined into one. The playlist converter can split them into one CSV each.`],
+  };
 }
 
 // ---------------------------------------------------------------- manual

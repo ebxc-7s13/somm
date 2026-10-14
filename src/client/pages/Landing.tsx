@@ -141,6 +141,9 @@ export function Landing() {
             <p className="small faint" style={{ marginTop: 'var(--space-4)' }}>
               No email required. SOMM never asks for your Spotify, YouTube or Apple password.
             </p>
+            <p className="small" style={{ marginTop: 'var(--space-2)' }}>
+              <Link to="/convert">Convert a playlist to CSV</Link> <span className="faint">— free, no account needed.</span>
+            </p>
           </div>
           <figure className="hero-map" style={{ margin: 0 }}>
             <MusicMap map={map} ariaLabel="Example Music Map generated from a fictional library" interactive={false} compact showControls={false} labels="minimal" />

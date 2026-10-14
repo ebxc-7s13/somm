@@ -8,7 +8,8 @@ import type { ProviderId } from '../../shared/types';
 import { classifyEntries, ensureGenre, resolveTrack, type PreviewEntry } from '../catalog';
 import { all, get, newId, nowIso, run, tx, type DB } from '../db';
 import { ProviderError } from '../http';
-import { parseCsv, parseJson, parseM3u, parseManual, parseText, parseXspf } from '../import/adapters/files';
+import { parseCsv, parseJson, parseJsonPlaylists, parseM3u, parseManual, parseText, parseXspf } from '../import/adapters/files';
+import { toConverted, type ConvertedPlaylist } from '../import/convert';
 import { parseAppleMusicPlaylist, parseSpotifyPlaylist, parseYouTubePlaylist } from '../import/adapters/urls';
 import { ImportError, type RawPlaylist } from '../import/types';
 import type { ProviderService } from './providers';
@@ -67,6 +68,41 @@ async function readSource(input: PreviewInput, userId: string, providers: Provid
   }
 }
 
+/** Provider API failures become user-facing import errors. */
+function providerFailure(err: unknown): unknown {
+  if (!(err instanceof ProviderError)) return err;
+  return new ImportError(
+    err.message,
+    err.code === 'rate_limited' ? 'rate_limited' : err.code === 'unauthorized' ? 'needs_connection' : err.code === 'forbidden' ? 'not_authorized' : 'provider_unavailable',
+    err.code === 'rate_limited' ? 429 : err.code === 'unauthorized' ? 401 : 502,
+  );
+}
+
+// ------------------------------------------------------------- conversion
+
+/** Spotify's account-data Playlist1.json holds every playlist, so the converter accepts larger JSON files. */
+export const CONVERT_MAX_JSON_BYTES = 12 * 1024 * 1024;
+
+export const convertSchema = z.discriminatedUnion('source', [
+  z.object({ source: z.enum(['csv', 'm3u', 'xspf', 'json', 'text']), content: z.string().max(CONVERT_MAX_JSON_BYTES), fileName: z.string().max(200).optional(), name: z.string().max(120).optional() }),
+  z.object({ source: z.enum(['spotify', 'youtube', 'apple_music']), playlist: z.string().min(1).max(500) }),
+]);
+export type ConvertInput = z.infer<typeof convertSchema>;
+
+/**
+ * Reads a playlist source and returns SOMM CSV rows — one playlist per playlist
+ * in the source. Nothing is stored. Link sources need a signed-in user.
+ */
+export async function convertPlaylists(input: ConvertInput, userId: string | null, providers: ProviderService): Promise<ConvertedPlaylist[]> {
+  if (input.source === 'json') return parseJsonPlaylists(input.content, input.fileName ?? 'Imported JSON', CONVERT_MAX_JSON_BYTES).map(toConverted);
+  if ('playlist' in input && !userId) throw new ImportError('Sign in to convert a playlist link.', 'needs_connection', 401);
+  try {
+    return [toConverted(await readSource(input, userId ?? '', providers))];
+  } catch (err) {
+    throw providerFailure(err);
+  }
+}
+
 export interface PreviewResult {
   draftId: string;
   playlist: { name: string; provider: ProviderId; sourceUrl: string | null };
@@ -81,14 +117,7 @@ export async function previewImport(db: DB, userId: string, input: PreviewInput,
   try {
     raw = await readSource(input, userId, providers);
   } catch (err) {
-    if (err instanceof ProviderError) {
-      throw new ImportError(
-        err.message,
-        err.code === 'rate_limited' ? 'rate_limited' : err.code === 'unauthorized' ? 'needs_connection' : err.code === 'forbidden' ? 'not_authorized' : 'provider_unavailable',
-        err.code === 'rate_limited' ? 429 : err.code === 'unauthorized' ? 401 : 502,
-      );
-    }
-    throw err;
+    throw providerFailure(err);
   }
   const entries = await classifyEntries(db, userId, raw.entries);
   const draftId = newId();

@@ -22,6 +22,7 @@ const PATHS: Record<string, string> = {
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
   upload: 'M12 16V4m0 0-4 4m4-4 4 4M5 20h14',
+  download: 'M12 4v12m0 0-4-4m4 4 4-4M5 20h14',
   check: 'm5 12 4 4 10-10',
   warning: 'M12 4 2.5 20h19L12 4Zm0 6v4m0 3h.01',
   refresh: 'M20 11a8 8 0 0 0-14.6-4.4L4 8m0-4v4h4M4 13a8 8 0 0 0 14.6 4.4L20 16m0 4v-4h-4',

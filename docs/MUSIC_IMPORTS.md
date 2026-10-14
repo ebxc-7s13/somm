@@ -12,7 +12,9 @@ documented responses; a passing mock test proves SOMM’s handling, **not** that
 | M3U / M3U8 | ✅ working | nothing | `#EXTINF` artist/title/duration (paths/URLs ignored and never fetched) | same |
 | XSPF | ✅ working | nothing | title, creator, album, duration, ISRC identifier (DTD/entities rejected) | same |
 | JSON (SOMM export or array) | ✅ working | nothing | as CSV | same |
-| Pasted list | ✅ working | nothing | “Artist - Title”, “Title by Artist”, tab-separated | same |
+| Spotify account-data export (`Playlist1.json`, `YourLibrary.json`) | ✅ working | nothing (the user requests it from Spotify) | title, artist, album, Spotify track link; local files; episodes/audiobooks skipped with a reason | import: 2 MB, combined into one playlist; converter: 12 MB, one CSV per playlist |
+| Apple Music / iTunes “Export Playlist” text | ✅ working | nothing | name, artist, album, genre, year, time (UTF-16, tab-separated; `Location` paths ignored) | 2 MB, 5,000 rows |
+| Pasted list | ✅ working | nothing | “Artist - Title”, “Title by Artist”, tab-separated; a pasted table with a header row is read as CSV | same |
 | Manual entry | ✅ working | nothing (song search needs MusicBrainz) | title, artist, album, year, your genre | 500 per batch |
 | Spotify | ✅ implemented, mock-tested · 🔑 credentials | `SPOTIFY_CLIENT_ID`, `SPOTIFY_REDIRECT_URI`, `TOKEN_ENCRYPTION_KEY` | tracks, artists, album, duration, ISRC, explicit; artist-level genres (deprecated field) | owned/collaborative playlists only; dev mode 5 users |
 | YouTube / YouTube Music | ✅ implemented, mock-tested · 🔑 credentials | `YOUTUBE_API_KEY` | video titles + channel → parsed artist/title | public/unlisted only; 30-day retention |
@@ -100,6 +102,29 @@ Verified sources: [Rate limiting](https://musicbrainz.org/doc/MusicBrainz_API/Ra
 * **Licence:** core data (recordings, artists, relationships incl. instrument credits) is CC0; **tags and genre
   associations are supplementary data under CC BY-NC-SA 3.0** — attribution is shown in the UI, and any commercial
   deployment needs a separate arrangement with MetaBrainz.
+
+## Playlist → CSV converter
+
+`/convert` (no account needed) turns any source above into SOMM's CSV format — one row per song — so a listener
+can check and fix every song, download the file, and import that same file:
+
+1. `POST /api/convert` with a file/pasted source (`csv`, `m3u`, `xspf`, `json`, `text`) or, when signed in, a
+   playlist link (`spotify`, `youtube`, `apple_music`; only works when that provider is configured). It reuses the
+   import adapters and returns `{ playlists: [{ name, rows, errors, notes }], stored: false }`. Nothing is written to
+   the database; requests are rate-limited (30 per 10 minutes per user or IP).
+2. The page shows an editable sheet (title, artist, album, genre, year), flags rows missing a title or artist, and
+   writes the CSV in the browser (`src/shared/csv.ts`): columns `title, artist, album, genre, year, duration, isrc,
+   bpm, instruments, mood, tags, link`, multiple values separated by `; `, RFC 4180 quoting, CRLF, UTF-8 BOM.
+   Cells starting with `= + - @` get a leading apostrophe so spreadsheets do not run them as formulas; the CSV
+   importer removes it again.
+3. **Download CSV**, **Copy CSV**, or **Import this CSV**, which hands the identical CSV text to the import page
+   (`/import?from=convert`, via `sessionStorage` in the same tab) for the normal preview → commit → enrichment flow.
+
+A test proves the round trip: converted rows → CSV → import preview yields the same songs and fields.
+
+Bare Spotify or YouTube links (copied out of the apps) contain no song names. SOMM does not scrape pages, so the
+converter explains how to export instead (Spotify: *Download your data* or Exportify; Apple Music: *Export
+Playlist*; YouTube: the API-key provider or “Artist - Title” lines).
 
 ## Import workflow
 

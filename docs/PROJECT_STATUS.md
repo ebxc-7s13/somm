@@ -10,6 +10,8 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | Landing page, design system, typographic logo | ✅ | browser-verified desktop + mobile |
 | Accounts (handle + password), demo mode, sessions | ✅ | |
 | File imports: CSV, Exportify, M3U, XSPF, JSON, pasted, manual | ✅ | |
+| Spotify data-export JSON and Apple Music/iTunes playlist exports | ✅ | parsed with fictional samples of each format; not yet tried with a real export file |
+| Playlist → CSV converter (`/convert`, no account needed) | ✅ | editable sheet, download/copy, hands the same CSV to import; nothing stored |
 | Preview with duplicates / versions / unreadable rows | ✅ | |
 | Canonical tracks, dedupe, versions, provenance | ✅ | |
 | Song library + song detail | ✅ | |

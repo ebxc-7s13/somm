@@ -12,6 +12,7 @@ const lazyPage = <K extends string>(loader: () => Promise<Record<K, ComponentTyp
 
 const Onboarding = lazyPage(() => import('./pages/Onboarding'), 'Onboarding');
 const ImportPage = lazyPage(() => import('./pages/Import'), 'ImportPage');
+const ConvertPage = lazyPage(() => import('./pages/Convert'), 'ConvertPage');
 const ImportJobPage = lazyPage(() => import('./pages/ImportJob'), 'ImportJobPage');
 const LibraryPage = lazyPage(() => import('./pages/Library'), 'LibraryPage');
 const TrackDetailPage = lazyPage(() => import('./pages/TrackDetail'), 'TrackDetailPage');
@@ -38,6 +39,7 @@ const ROUTES: Route[] = [
   { path: '/signup', component: SignUp, auth: false },
   { path: '/welcome', component: Onboarding, auth: true },
   { path: '/import', component: ImportPage, auth: true },
+  { path: '/convert', component: ConvertPage, auth: false },
   { path: '/import/jobs/:id', component: ImportJobPage, auth: true },
   { path: '/library', component: LibraryPage, auth: true },
   { path: '/library/tracks/:id', component: TrackDetailPage, auth: true },

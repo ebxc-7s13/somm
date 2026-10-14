@@ -67,6 +67,8 @@ export async function createAppContext(config: AppConfig, options: ContextOption
 }
 
 const MAX_BODY_BYTES = 3.5 * 1024 * 1024;
+/** The converter accepts Spotify's full-account Playlist1.json (up to 12 MB, sent as a JSON string). */
+const MAX_CONVERT_BODY_BYTES = 16 * 1024 * 1024;
 
 export function createApp(ctx: AppContext) {
   const app = new Hono<Env>();
@@ -108,7 +110,7 @@ export function createApp(ctx: AppContext) {
       const site = c.req.header('sec-fetch-site');
       if (site && site !== 'same-origin' && site !== 'same-site' && site !== 'none') throw new ApiError(403, 'bad_origin', 'Cross-site request rejected.');
       const length = Number(c.req.header('content-length') ?? 0);
-      if (length > MAX_BODY_BYTES) throw new ApiError(413, 'too_large', 'Request body too large.');
+      if (length > (c.req.path === '/api/convert' ? MAX_CONVERT_BODY_BYTES : MAX_BODY_BYTES)) throw new ApiError(413, 'too_large', 'Request body too large.');
       const type = c.req.header('content-type') ?? '';
       // A body is present when it has a length or is chunked (no Content-Length).
       const hasBody = length > 0 || !!c.req.header('transfer-encoding');
@@ -121,8 +123,10 @@ export function createApp(ctx: AppContext) {
     await next();
   });
 
+  // `commit` (set by Render) shows which revision is live after a deploy.
+  const commit = process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null;
   app.get('/api/health', (c) =>
-    c.json({ ok: true, version: '0.1.0', enrichment: ctx.queue.enabled, time: new Date().toISOString() }),
+    c.json({ ok: true, version: '0.1.0', commit, enrichment: ctx.queue.enabled, time: new Date().toISOString() }),
   );
   app.route('/api', authRoutes);
   app.route('/api', importRoutes);

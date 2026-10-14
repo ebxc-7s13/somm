@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { normalizeText } from '../../shared/normalize';
-import { ApiError, rateLimit, requireUser, type Env } from '../context';
+import { ApiError, clientIp, rateLimit, requireUser, type Env } from '../context';
 import { all } from '../db';
 import { ImportError } from '../import/types';
 import { LIMITS } from '../ratelimit';
 import { sampleLibraryCsv } from '../../shared/demoCatalog';
-import { commitImport, commitSchema, jobProgress, previewImport, previewSchema, retryJob } from '../services/imports';
+import { commitImport, commitSchema, convertPlaylists, convertSchema, jobProgress, previewImport, previewSchema, retryJob } from '../services/imports';
 
 export const importRoutes = new Hono<Env>()
   // ------------------------------------------------------------ providers
@@ -68,6 +68,17 @@ export const importRoutes = new Hono<Env>()
     const provider = c.req.param('provider');
     if (!['spotify', 'apple_music'].includes(provider)) throw new ApiError(404, 'unknown_provider', 'Unknown provider.');
     return c.json({ disconnected: await c.get('ctx').providers.disconnect(user.id, provider) });
+  })
+
+  // ------------------------------------------------------------ converter
+  // Playlist → SOMM CSV. Works without an account for files and pasted lists; nothing is stored.
+  .post('/convert', async (c) => {
+    const user = c.get('user');
+    rateLimit(c, `convert:${user?.id ?? clientIp(c)}`, LIMITS.convert);
+    const parsed = convertSchema.safeParse(await c.req.json());
+    if (!parsed.success) throw new ApiError(400, 'invalid_input', 'The conversion request is not valid.', { issues: parsed.error.issues.slice(0, 5) });
+    const playlists = await convertPlaylists(parsed.data, user?.id ?? null, c.get('ctx').providers);
+    return c.json({ playlists, stored: false });
   })
 
   // -------------------------------------------------------------- imports

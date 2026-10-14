@@ -36,6 +36,7 @@ export const LIMITS = {
   messageBurst: { limit: 5, windowMs: 10_000 },
   messageHourly: { limit: 120, windowMs: 3_600_000 },
   importPreview: { limit: 30, windowMs: 3_600_000 },
+  convert: { limit: 30, windowMs: 600_000 },
   reports: { limit: 20, windowMs: 3_600_000 },
   catalogSearch: { limit: 30, windowMs: 60_000 },
   callInvite: { limit: 6, windowMs: 60_000 },

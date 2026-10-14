@@ -1715,3 +1715,76 @@ a.tree-card:hover {
     margin-bottom: var(--space-2);
   }
 }
+
+/* ------------------------------------------------- playlist → CSV converter */
+.sheet-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.sheet-wrap:focus-visible {
+  box-shadow: var(--focus);
+}
+.sheet {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--fs-sm);
+}
+.sheet th {
+  position: sticky;
+  top: 0;
+  padding: var(--space-2) var(--space-2);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-weight: 650;
+  text-align: left;
+}
+.sheet td {
+  padding: 2px var(--space-1);
+  border-top: 1px solid var(--line);
+  vertical-align: middle;
+}
+.sheet td.num {
+  padding-left: var(--space-2);
+}
+.sheet .icon-btn {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+}
+.sheet-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+.sheet-input:hover {
+  border-color: var(--line-strong);
+}
+.sheet-input:focus-visible {
+  border-color: var(--yellow);
+  background: var(--bg-deep);
+  outline: none;
+}
+.sheet-input[aria-invalid='true'] {
+  border-color: var(--warn);
+  background: rgba(255, 177, 61, 0.08);
+}
+.sheet-incomplete td.num {
+  color: var(--warn);
+}
+.help-list dt {
+  margin-top: var(--space-3);
+  color: var(--text);
+  font-weight: 650;
+}
+.help-list dd {
+  margin: 4px 0 0;
+}

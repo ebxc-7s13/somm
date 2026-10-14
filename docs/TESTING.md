@@ -7,7 +7,7 @@ npm run lint         # ESLint 10 + typescript-eslint
 npm run check        # typecheck + lint + test + build
 ```
 
-Last full run (2026-10-14, Windows 11, Node 22.23.2): **192 tests in 15 files, all passing**; typecheck and lint clean.
+Last full run (2026-10-14, Windows 11, Node 22.23.2): **205 tests in 18 files, all passing**; typecheck and lint clean.
 
 Database tests run real PostgreSQL SQL through **PGlite** (Postgres compiled to WebAssembly, in-process): nothing to
 install. `tests/global-setup.ts` migrates one database, dumps it, and caches the snapshot under
@@ -28,6 +28,9 @@ suite takes ~1.5 minutes; workers are capped at half the logical CPUs because th
 | `tests/integration/realtime.test.ts` | 8 | real HTTP+WebSocket server: unauthenticated/cross-origin upgrade rejection, member-only delivery, mute filtering, leave stops delivery, reconnect gap-fill, ping/pong, malformed frames; call signalling: full offer/answer/ICE relay, state checks, non-members, blocks, offline callee, decline, ring timeout, disconnect ends call, `CALLS_ENABLED=false` |
 | `tests/e2e/workflow.test.ts` | 2 | the 12-step acceptance workflow on the seeded fictional community; seed idempotency; demo listeners cannot sign in |
 | `tests/ui/components.test.tsx` | 12 | landing copy/CTAs/taglines, demo network failure, map keyboard access + aria labels + selection + search + dimming, list alternative, offline error + retry, empty states, score ring + breakdown, library long names/coverage/version badges, network failure recovery, empty library |
+| `tests/unit/csv.test.ts` | 4 | CSV writer quoting/BOM/CRLF, formula neutralising and restoring, durations, file names, convert → CSV → import round trip (commas, quotes, several artists, formula-like titles, line breaks, attributes, links) |
+| `tests/integration/convert.test.ts` | 6 | converter without an account stores nothing; Spotify data export split per playlist (episodes skipped, local files read); Apple Music/iTunes export (paths ignored); helpful error for bare Spotify links; links need sign-in; validation and rate limit; converted CSV imports the same songs including an edited genre |
+| `tests/ui/convert.test.tsx` | 3 | paste → convert → flag incomplete row → edit genre → download (file contents checked) → hand-off to import via sign-in; link tab explains sign-in/setup; UTF-16 and Windows-1252 file decoding |
 | `tests/ui/chat.test.tsx` | 3 | untrusted text not rendered as HTML, safe link attributes, hidden messages, length limit, realtime push, offline send keeps draft |
 | `tests/ui/contrast.test.ts` | 21 | WCAG AA (≥ 4.5:1) for 20 token pairs, brand palette values |
 | `tests/security/repository.test.ts` | 8 | .gitignore coverage (incl. signing keys), no keystores in the tree, no database URL in `render.yaml`, placeholder-only .env.example, no secret-looking values, no server secrets or `dangerouslySetInnerHTML` in client code, built bundle free of server config, clean UTF-8 |

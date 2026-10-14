@@ -4,7 +4,8 @@ import { ProviderName } from '../components/Badges';
 import { Icon } from '../components/Icon';
 import { ErrorState, Loading, Spinner } from '../components/States';
 import { useApi, useDocumentTitle } from '../hooks';
-import { useNavigate, useQuery } from '../router';
+import { detectSource, readTextFile, takeCsvHandoff } from '../fileText';
+import { Link, useNavigate, useQuery } from '../router';
 import { useToast } from '../state';
 import type { PreviewEntry, PreviewResult, ProviderStatus } from '../types';
 
@@ -53,15 +54,6 @@ function ProviderNotice({ status }: { status?: ProviderStatus }) {
       </p>
     </div>
   );
-}
-
-function detectSource(name: string): 'csv' | 'm3u' | 'xspf' | 'json' | 'text' {
-  const ext = name.toLowerCase().split('.').pop() ?? '';
-  if (ext === 'm3u' || ext === 'm3u8') return 'm3u';
-  if (ext === 'xspf') return 'xspf';
-  if (ext === 'json') return 'json';
-  if (ext === 'txt') return 'text';
-  return 'csv';
 }
 
 interface ManualRow {
@@ -380,11 +372,21 @@ export function ImportFlow({ onCommitted, initialSource = 'file' }: { onCommitte
     }
   };
 
+  // A CSV made on the converter page: import exactly that file.
+  const handoffDone = useRef(false);
+  useEffect(() => {
+    if (handoffDone.current || query.get('from') !== 'convert') return;
+    handoffDone.current = true;
+    const handoff = takeCsvHandoff();
+    if (handoff) void run({ source: 'csv', content: handoff.csv, fileName: handoff.fileName, name: handoff.name });
+    else setError('The converted CSV was not found in this browser tab. Upload the downloaded file under “Upload a file”.');
+    // Once per visit: run is recreated every render, so depending on it would import the same CSV repeatedly.
+  }, [query]);
+
   const onFile = async (file: File | undefined) => {
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) return setError('Files are limited to 2 MB. Split large exports into several files.');
-    const content = await file.text();
-    await run({ source: detectSource(file.name), content, fileName: file.name });
+    await run({ source: detectSource(file.name), content: await readTextFile(file), fileName: file.name });
   };
 
   const sample = async () => {
@@ -440,7 +442,8 @@ export function ImportFlow({ onCommitted, initialSource = 'file' }: { onCommitte
               <Icon name="upload" size={40} />
               <h2>Drop a playlist file</h2>
               <p className="muted small">
-                CSV (title, artist, album, genre, year, duration, isrc, instruments…), Exportify CSV exports from Spotify, M3U/M3U8, XSPF or SOMM JSON. Up to 2 MB / 5,000 tracks.
+                CSV (title, artist, album, genre, year, duration, isrc, instruments…), Exportify CSV exports from Spotify, Apple Music / iTunes exported
+                playlists (.txt), M3U/M3U8, XSPF, Spotify data-export or SOMM JSON. Up to 2 MB / 5,000 tracks.
               </p>
               <button type="button" className="btn btn-primary" onClick={() => fileRef.current?.click()} disabled={busy}>
                 Choose a file
@@ -448,6 +451,9 @@ export function ImportFlow({ onCommitted, initialSource = 'file' }: { onCommitte
               <input ref={fileRef} type="file" accept=".csv,.m3u,.m3u8,.xspf,.json,.txt,text/csv" className="sr-only" aria-label="Playlist file" onChange={(e) => void onFile(e.target.files?.[0])} />
             </div>
             <p className="small muted">SOMM reads only song metadata from the file. File paths and audio are never read or stored.</p>
+            <p className="small muted">
+              Playlist in another format, or want to check and fix every song first? <Link to="/convert">Convert it to a SOMM CSV</Link>.
+            </p>
           </>
         )}
 
@@ -602,6 +608,9 @@ export function ImportPage() {
           <p className="eyebrow">Step 1 · Bring your music</p>
           <h1>Import a playlist</h1>
           <p className="lead">Pick a source. You will see every detected track — duplicates, alternate versions and unreadable rows — before anything is saved.</p>
+          <p className="small muted">
+            Want to check every song before importing, or split a Spotify data export into playlists? <Link to="/convert">Use the playlist-to-CSV converter</Link>.
+          </p>
         </div>
         {count > 0 && <span className="badge">{count} playlist{count === 1 ? '' : 's'} imported</span>}
       </div>

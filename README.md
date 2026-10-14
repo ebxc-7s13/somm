@@ -31,6 +31,13 @@ Production:
 npm run build && npm start   # serves API + WebSocket + built client from one Node process
 ```
 
+## Playlist → CSV converter
+
+<https://soundofmymind.onrender.com/convert> turns a playlist into SOMM's CSV format — one row per song — with no
+account: paste a list, or upload Spotify's data export (`Playlist1.json`, one CSV per playlist), an Exportify CSV, an
+Apple Music/iTunes exported playlist, M3U/M3U8 or XSPF. Check and fix every song, download the CSV, then import that
+same file. Details: [`docs/MUSIC_IMPORTS.md`](docs/MUSIC_IMPORTS.md#playlist--csv-converter).
+
 ## Use it as an app
 
 **Android:** download the latest signed APK — <https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk> — open it on your phone and allow the install when
