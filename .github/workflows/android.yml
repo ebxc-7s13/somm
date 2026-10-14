@@ -92,7 +92,9 @@ jobs:
       - name: Verify signature
         run: |
           APK=android/app/build/outputs/apk/release/app-release.apk
-          "$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME"/build-tools | sort -V | tail -1)/apksigner verify --print-certs "$APK" | head -3
+          # Capture first so a failed verification fails the step (a pipe would hide its exit code).
+          CERTS=$("$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME"/build-tools | sort -V | tail -1)/apksigner verify --print-certs "$APK")
+          echo "$CERTS" | head -3
           cp "$APK" "somm-${{ github.run_number }}.apk"
           rm -f "$RUNNER_TEMP/somm-release.p12"
 
