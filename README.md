@@ -2,6 +2,14 @@
 
 **You Are What You Consume** · *A Social Mind for Audiophiles*
 
+| | |
+| --- | --- |
+| 🌐 **Website** | <https://soundofmymind.onrender.com> |
+| 📱 **Android app** | [Download the latest APK](https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk) · [all releases](https://github.com/ebxc-7s13/somm/releases) |
+| 🎵 **Playlist → CSV converter** | <https://soundofmymind.onrender.com/convert> (no account needed) |
+
+Runs on free plans: the server sleeps after 15 idle minutes, so the first visit can take about a minute to load.
+
 SOMM turns a playlist into an interactive **Music Map** of your musical identity, explains what
 your library says about your taste — with the evidence and the source behind every statement —
 and connects you with listeners whose maps genuinely overlap yours in music-based communities

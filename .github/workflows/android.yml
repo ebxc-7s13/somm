@@ -110,7 +110,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          SHA256=$(sha256sum somm-android.apk | cut -d' ' -f1)
+          SIZE=$(du -k somm-android.apk | cut -f1)
+          cat > notes.md <<NOTES
+          The SOMM Android app (version 0.1.${{ github.run_number }}). It opens **${SOMM_APP_URL}** — the same site as the web version, so every website update reaches the app without reinstalling.
+
+          **Install**
+          1. On your Android phone, download **somm-android.apk** below (${SIZE} KB).
+          2. Open it. If Android asks, allow your browser or file manager to install apps.
+          3. Open SOMM, then sign up, sign in or tap **Try the demo**.
+
+          Updates install over the previous version (same signing key). The server runs on a free plan and sleeps when idle; if the app shows “Can’t reach SOMM right now”, wait about a minute and tap **Try again**.
+
+          Prefer not to install anything? Open ${SOMM_APP_URL} in your browser and use **Install app** / **Add to Home Screen**.
+
+          SHA-256 of the APK: \`${SHA256}\`
+          NOTES
           gh release create "android-${{ github.run_number }}" somm-android.apk \
             --target "${{ github.sha }}" --latest \
-            --title "SOMM for Android (build ${{ github.run_number }})" \
-            --notes "Signed APK of the SOMM Android app. It opens ${SOMM_APP_URL}. Install by opening the APK on your phone and allowing installs from your browser or file manager when Android asks."
+            --title "SOMM for Android 0.1.${{ github.run_number }}" \
+            --notes-file notes.md
