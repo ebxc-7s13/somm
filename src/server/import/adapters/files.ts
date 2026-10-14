@@ -304,36 +304,40 @@ export function parseText(text: string, name = 'Pasted list'): RawPlaylist {
  * the converter's song matching can fill in. Track numbers and durations copied
  * along with the names are skipped.
  */
+/**
+ * One line of a pasted name list. Returns null for lines to skip (blank, comments,
+ * track numbers or durations copied along with the names).
+ */
+export function parseNameLine(rawLine: string, row: number): { entry: RawEntry } | { error: string } | null {
+  const line = rawLine.replace(/^\s*(?:\d+[.)]\s+|[-*•]\s+)/, '').trim();
+  if (!line || line.startsWith('#') || /^\d+$/.test(line) || /^\d{1,2}:\d{2}(?::\d{2})?$/.test(line)) return null;
+  const quoted = line.match(/^["“](.+?)["”]\s+by\s+(.+)$/i);
+  const tabbed = line.match(/^([^\t]+)\t+([^\t]+)$/);
+  const pair = quoted ? { title: quoted[1]!, artist: quoted[2]! } : tabbed ? { title: tabbed[1]!, artist: tabbed[2]! } : null;
+  if (pair) {
+    const title = field(pair.title);
+    const artists = splitArtistList(pair.artist);
+    if (title && artists.length) return { entry: { row, title, artists, parseConfidence: 'medium' } };
+  }
+  const parsed = parseYouTubeTitle(line, null);
+  const title = field(parsed.title);
+  if (!title) return { error: 'Could not read a song name on this line.' };
+  return {
+    entry: parsed.artist
+      ? { row, title, artists: splitArtistList(parsed.artist), parseConfidence: 'medium' }
+      : { row, title, artists: [], parseConfidence: 'low', warnings: ['Song title only — add the artist or use “Find song details”.'] },
+  };
+}
+
 export function parseNameList(text: string, name = 'Pasted list'): RawPlaylist {
   assertSize(text);
   if (looksLikeTable(text)) return parseCsv(text.trimStart(), name);
   const entries: RawEntry[] = [];
   const errors: ImportRowError[] = [];
   text.split(/\r?\n/).forEach((rawLine, i) => {
-    const line = rawLine.replace(/^\s*(?:\d+[.)]\s+|[-*•]\s+)/, '').trim();
-    if (!line || line.startsWith('#') || /^\d+$/.test(line) || /^\d{1,2}:\d{2}(?::\d{2})?$/.test(line)) return;
-    const quoted = line.match(/^["“](.+?)["”]\s+by\s+(.+)$/i);
-    const tabbed = line.match(/^([^\t]+)\t+([^\t]+)$/);
-    const pair = quoted ? { title: quoted[1]!, artist: quoted[2]! } : tabbed ? { title: tabbed[1]!, artist: tabbed[2]! } : null;
-    if (pair) {
-      const title = field(pair.title);
-      const artists = splitArtistList(pair.artist);
-      if (title && artists.length) {
-        entries.push({ row: i + 1, title, artists, parseConfidence: 'medium' });
-        return;
-      }
-    }
-    const parsed = parseYouTubeTitle(line, null);
-    const title = field(parsed.title);
-    if (!title) {
-      errors.push({ row: i + 1, message: 'Could not read a song name on this line.' });
-      return;
-    }
-    entries.push(
-      parsed.artist
-        ? { row: i + 1, title, artists: splitArtistList(parsed.artist), parseConfidence: 'medium' }
-        : { row: i + 1, title, artists: [], parseConfidence: 'low', warnings: ['Song title only — add the artist or use “Find song details”.'] },
-    );
+    const r = parseNameLine(rawLine, i + 1);
+    if (r && 'entry' in r) entries.push(r.entry);
+    else if (r) errors.push({ row: i + 1, message: r.error });
   });
   if (entries.length > IMPORT_LIMITS.maxEntries) throw new ImportError(`Lists are limited to ${IMPORT_LIMITS.maxEntries} songs.`, 'too_large', 413);
   if (entries.length === 0) throw new ImportError('No song names found. Paste one song per line.', 'empty');

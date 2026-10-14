@@ -128,7 +128,7 @@ The converter reads pasted lists forgivingly (the import page stays strict): “
 “Artist - Song (Official Video) [4K]” (cleaned), quoted “Title” by Artist, Title⇥Artist, and plain song titles. Track
 numbers and durations copied with the names are skipped. Rows without an artist are kept for song matching.
 
-A list of track links is turned into names through each service's official **oEmbed** endpoint (public, no key;
+Track links (on their own or mixed with names) are turned into names through each service's official **oEmbed** endpoint (public, no key;
 checked 2026-10-14 that none of the oEmbed paths is disallowed by the services' robots.txt), up to 300 links at a time:
 
 | Link | What oEmbed gives | Result |

@@ -10,7 +10,7 @@ import { all, get, newId, nowIso, run, tx, type DB } from '../db';
 import { ProviderError } from '../http';
 import type { FetchLike } from '../http';
 import { parseCsv, parseJson, parseJsonPlaylists, parseM3u, parseManual, parseNameList, parseText, parseXspf } from '../import/adapters/files';
-import { looksLikeLinkList, resolveLinkList } from '../import/adapters/oembed';
+import { containsLinks, resolveLinkList } from '../import/adapters/oembed';
 import { toConverted, type ConvertedPlaylist } from '../import/convert';
 import { parseAppleMusicPlaylist, parseSpotifyPlaylist, parseYouTubePlaylist } from '../import/adapters/urls';
 import { ImportError, type RawPlaylist } from '../import/types';
@@ -106,7 +106,7 @@ export async function convertPlaylists(
   if (input.source === 'json') return parseJsonPlaylists(input.content, input.fileName ?? 'Imported JSON', CONVERT_MAX_JSON_BYTES).map(toConverted);
   if (input.source === 'text') {
     const name = input.name ?? 'Pasted list';
-    if (looksLikeLinkList(input.content)) return [toConverted(await resolveLinkList(input.content, name, fetchImpl))];
+    if (containsLinks(input.content)) return [toConverted(await resolveLinkList(input.content, name, fetchImpl))];
     return [toConverted(parseNameList(input.content, name))];
   }
   if ('playlist' in input && input.source !== 'youtube' && !userId) throw new ImportError('Sign in to convert a Spotify or Apple Music playlist link.', 'needs_connection', 401);

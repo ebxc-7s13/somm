@@ -9,7 +9,7 @@ import { loadConfig, PROJECT_URL } from '../../src/server/config';
 import { SongMatcher } from '../../src/server/enrich/matcher';
 import { MusicBrainzClient } from '../../src/server/enrich/musicbrainz';
 import { parseNameList } from '../../src/server/import/adapters/files';
-import { classifyLink, looksLikeLinkList } from '../../src/server/import/adapters/oembed';
+import { classifyLink, containsLinks } from '../../src/server/import/adapters/oembed';
 import { createTestServer } from '../helpers/server';
 import { json, mockFetch, noSleep } from '../helpers/mockfetch';
 
@@ -208,7 +208,8 @@ describe('pasted song names and links', () => {
     expect(classifyLink('https://www.youtube.com/playlist?list=PL123')).toHaveProperty('unsupported');
     expect(classifyLink('https://soundcloud.com/some-artist/sets/summer')).toHaveProperty('unsupported');
     expect(classifyLink('Nova Lattice - Glass Orbit')).toBeNull();
-    expect(looksLikeLinkList('https://youtu.be/abcdefghijk\nhttps://youtu.be/bcdefghijkl\nNova Lattice - Glass Orbit')).toBe(true);
+    expect(containsLinks('Nova Lattice - Glass Orbit\nhttps://youtu.be/abcdefghijk')).toBe(true);
+    expect(containsLinks('Nova Lattice - Glass Orbit\nJust A Title')).toBe(false);
   });
 
   it('turns Spotify, YouTube and SoundCloud links into song names through oEmbed, in order', async () => {
@@ -221,6 +222,7 @@ describe('pasted song names and links', () => {
     const { client } = await createTestServer({ fetchImpl });
     const content = [
       'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC',
+      'Teo Vance - Blue Hour (Official Audio)',
       'https://www.youtube.com/watch?v=abcdefghijk',
       'https://soundcloud.com/kilo-ray/basement-loop',
       'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M',
@@ -231,12 +233,14 @@ describe('pasted song names and links', () => {
     const p = r.body.playlists[0];
     expect(p.rows.map((x: any) => [x.title, x.artist, x.link])).toEqual([
       ['Glass Orbit', '', 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC'],
+      // Names and links can be mixed in one list.
+      ['Blue Hour', 'Teo Vance', ''],
       ['Night Drive', 'Nova Lattice', 'https://www.youtube.com/watch?v=abcdefghijk'],
       ['Basement Loop', 'Kilo Ray', 'https://soundcloud.com/kilo-ray/basement-loop'],
     ]);
     expect(p.errors).toEqual([
-      { row: 4, message: expect.stringMatching(/Ctrl\+A/) },
-      { row: 5, message: 'This link is private, removed, or not a song.' },
+      { row: 5, message: expect.stringMatching(/Ctrl\+A/) },
+      { row: 6, message: 'This link is private, removed, or not a song.' },
     ]);
     expect(p.notes.join(' ')).toMatch(/Spotify links give only the song title/);
     expect(calls.every((c) => /oembed/.test(c.url))).toBe(true);

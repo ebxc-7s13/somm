@@ -7,7 +7,8 @@
  */
 import { cleanDisplayText, parseYouTubeTitle, splitArtistList } from '../../../shared/normalize';
 import { fetchJson, type FetchLike, ProviderError } from '../../http';
-import { ImportError, type ImportRowError, type RawEntry, type RawPlaylist } from '../types';
+import { ImportError, IMPORT_LIMITS, type ImportRowError, type RawEntry, type RawPlaylist } from '../types';
+import { parseNameLine } from './files';
 
 export const MAX_LINKS = 300;
 const CONCURRENCY = 4;
@@ -53,10 +54,9 @@ const nonEmptyLines = (text: string) =>
     .map((l) => l.replace(/^\s*(?:\d+[.)]\s+|[-*•]\s+)/, '').trim())
     .filter(Boolean);
 
-/** At least half of the lines are music links (track, video or playlist links). */
-export function looksLikeLinkList(text: string): boolean {
-  const lines = nonEmptyLines(text);
-  return lines.length > 0 && lines.filter((l) => classifyLink(l) !== null).length >= lines.length / 2;
+/** Any line is a music link (track, video or playlist link). Names on other lines are still read. */
+export function containsLinks(text: string): boolean {
+  return nonEmptyLines(text).some((l) => classifyLink(l) !== null);
 }
 
 interface OEmbed {
@@ -112,14 +112,19 @@ function toEntry(row: number, link: { service: Service; id: string; url: string 
   };
 }
 
-/** Reads one pasted link per line through oEmbed; keeps the order of the list. */
+/**
+ * Reads a pasted list where some lines are track links: links are named through
+ * oEmbed, other lines are read as song names. Keeps the order of the list.
+ */
 export async function resolveLinkList(text: string, name: string, fetchImpl?: FetchLike): Promise<RawPlaylist> {
   const lines = nonEmptyLines(text);
-  if (lines.length > MAX_LINKS) throw new ImportError(`Paste at most ${MAX_LINKS} links at a time — split longer lists.`, 'too_large', 413);
+  if (lines.length > IMPORT_LIMITS.maxEntries) throw new ImportError(`Lists are limited to ${IMPORT_LIMITS.maxEntries} songs.`, 'too_large', 413);
   const entries: (RawEntry | null)[] = new Array(lines.length).fill(null);
   const errors: ImportRowError[] = [];
   const counts: Record<Service, number> = { spotify: 0, youtube: 0, soundcloud: 0 };
   const jobs = lines.map((line, i) => ({ line, row: i + 1, link: classifyLink(line) }));
+  const linkCount = jobs.filter((j) => j.link && !('unsupported' in j.link)).length;
+  if (linkCount > MAX_LINKS) throw new ImportError(`Paste at most ${MAX_LINKS} links at a time — split longer lists.`, 'too_large', 413);
 
   let next = 0;
   const worker = async () => {
@@ -127,7 +132,9 @@ export async function resolveLinkList(text: string, name: string, fetchImpl?: Fe
       const job = jobs[next++]!;
       const link = job.link;
       if (!link) {
-        errors.push({ row: job.row, message: 'Not a Spotify, YouTube or SoundCloud track link.' });
+        const named = parseNameLine(job.line, job.row);
+        if (named && 'entry' in named) entries[job.row - 1] = named.entry;
+        else if (named) errors.push({ row: job.row, message: named.error });
         continue;
       }
       if ('unsupported' in link) {
