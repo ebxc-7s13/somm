@@ -1,0 +1,38 @@
+# Render Blueprint: one free web service (API + WebSocket + built client).
+# Data lives in an external PostgreSQL database (e.g. Neon's free tier) because
+# Render's free instances have no persistent disk. See docs/DEPLOYMENT.md.
+services:
+  - type: web
+    name: somm
+    runtime: node
+    plan: free
+    # Same region as the Neon database (AWS ap-southeast-1) to keep queries fast.
+    region: singapore
+    branch: main
+    # Dev dependencies (Vite, esbuild, TypeScript) are needed to build.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      # Paste the PostgreSQL connection string when Render asks for it. Never commit it.
+      - key: DATABASE_URL
+        sync: false
+      # Render generates a random 256-bit key once; it encrypts provider tokens at rest.
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: DEMO_MODE_ENABLED
+        value: "true"
+      # Seeds the fictional demo listeners and Trees once (idempotent), after start-up.
+      - key: SEED_DEMO_ON_START
+        value: "true"
+      # Optional: an email or URL MusicBrainz can use to contact the operator.
+      # Metadata enrichment stays off until it is set.
+      - key: MUSICBRAINZ_CONTACT
+        sync: false

@@ -25,8 +25,28 @@ const read = (p: string) => readFileSync(p, 'utf8');
 describe('repository hygiene', () => {
   it('ignores secrets and local data in git', () => {
     const gitignore = read(join(root, '.gitignore'));
-    for (const pattern of ['.env', 'data/', '*.sqlite', 'node_modules/', 'dist/']) expect(gitignore).toContain(pattern);
+    for (const pattern of ['.env', 'data/', '*.sqlite', 'node_modules/', 'dist/', '*.p12', '*.jks', '*.keystore']) expect(gitignore).toContain(pattern);
     expect(gitignore).toContain('!.env.example');
+  });
+
+  it('keeps Android signing keys out of the repository', () => {
+    const keys: string[] = [];
+    const scan = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        if (['node_modules', 'dist', '.git', 'data', 'coverage', 'build'].includes(name)) continue;
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) scan(p);
+        else if (/\.(p12|jks|keystore|pfx)$/i.test(name)) keys.push(p);
+      }
+    };
+    scan(root);
+    expect(keys).toEqual([]);
+  });
+
+  it('keeps the database URL out of the Render blueprint', () => {
+    const blueprint = read(join(root, 'render.yaml'));
+    expect(blueprint).not.toMatch(/postgres(ql)?:\/\//);
+    expect(blueprint).toMatch(/key: DATABASE_URL\s+sync: false/);
   });
 
   it('ships .env.example with placeholders only', () => {

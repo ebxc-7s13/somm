@@ -6,6 +6,37 @@ import { Link, NavLink, useNavigate } from '../router';
 import { useAuth, useToast } from '../state';
 import type { Playlist, ProviderStatus } from '../types';
 import { realtime } from '../realtime';
+import { useInstallApp } from '../install';
+
+function InstallPanel() {
+  const app = useInstallApp();
+  const toast = useToast();
+  const install = async () => {
+    const outcome = await app.install();
+    if (outcome === 'accepted') toast('SOMM is being added to your device.', 'success');
+  };
+  return (
+    <section className="panel" aria-labelledby="app" style={{ marginTop: 'var(--space-6)' }}>
+      <h2 id="app">Install the app</h2>
+      {app.native ? (
+        <p className="small muted">You’re using the SOMM Android app. It always opens the latest version of SOMM.</p>
+      ) : app.standalone ? (
+        <p className="small muted">SOMM is installed on this device.</p>
+      ) : app.canPrompt ? (
+        <>
+          <p className="small muted">Add SOMM to your home screen or desktop. It opens in its own window and updates itself.</p>
+          <button type="button" className="btn btn-primary" onClick={() => void install()}>
+            Install SOMM
+          </button>
+        </>
+      ) : app.ios ? (
+        <p className="small muted">In Safari, tap Share, then “Add to Home Screen”.</p>
+      ) : (
+        <p className="small muted">Use your browser’s “Install app” or “Add to Home screen” menu item to install SOMM.</p>
+      )}
+    </section>
+  );
+}
 
 function SettingsNav() {
   return (
@@ -82,6 +113,7 @@ export function SettingsPage() {
           )}
         </section>
       </div>
+      <InstallPanel />
       <section aria-labelledby="prov" style={{ marginTop: 'var(--space-6)' }}>
         <h2 id="prov">Music sources & metadata</h2>
         {providers.loading && <Loading />}

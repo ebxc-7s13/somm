@@ -5,3 +5,5 @@
 *.jpg binary
 *.woff2 binary
 *.sqlite binary
+*.jar binary
+*.bat text eol=crlf
