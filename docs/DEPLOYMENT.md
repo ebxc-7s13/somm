@@ -14,8 +14,9 @@ Status (2026-10-14): the Neon database exists (project `somm`, region AWS Singap
 verified against it — migrations applied, then sign-up → CSV import → profile → map → library → Trees → account
 deletion all succeeded, and the deletion left no user, track, playlist or session rows. A test run of the APK workflow
 (manual run, not published) built and signed a 2.7 MB APK in about 2 minutes; `apksigner` confirmed the release
-certificate. The Render service is set up by the repository owner (account sign-up cannot be automated); the steps
-are below.
+certificate. The repository owner created the Render service; it is live at <https://soundofmymind.onrender.com>,
+and since 2026-10-14 every tested commit on `main` is deployed by CI through the Render deploy hook (first verified
+with commit `b541d56`). The Android release `android-6` (0.1.6) opens that address.
 
 ## 1. Database (Neon)
 

@@ -235,8 +235,23 @@ with consented engagement data; add Playwright tests; deploy behind HTTPS with b
   publishes a signed APK on GitHub's runners (nothing installed locally).
 * Tests: 192 passing (PGlite snapshot setup; new service-worker and repository checks).
 
-## 17. Git status
+## 17. Phase 3 (2026-10-14): playlist converter, public release and continuous deployment
 
+* **Playlist → CSV converter** (`/convert`, no account needed, nothing stored): pasted lists or spreadsheet tables,
+  CSV/Exportify, M3U/M3U8, XSPF, JSON, Spotify's account-data export (one CSV per playlist) and Apple Music/iTunes
+  playlist exports become SOMM CSV rows in an editable sheet; the CSV can be downloaded, copied or handed to the import
+  page as the identical file. A round-trip test proves converted rows import as the same songs.
+* **Public repository** after a full-history secret scan; README and the repository's About box link the website, the
+  latest APK and the converter.
+* **Continuous deployment:** the Render service had been created from the public URL, so pushes did not redeploy. CI
+  now calls the Render deploy hook after typecheck, lint, tests and build pass, and waits until `/api/health`
+  (which reports `RENDER_GIT_COMMIT`) shows the new commit.
+* **Android 0.1.6** released with install instructions, size and SHA-256; download, URL and signature verified.
+* Tests: 205 passing in 18 files.
+
+## 18. Git status
+
+* Website: <https://soundofmymind.onrender.com> · Android: <https://github.com/ebxc-7s13/somm/releases/latest>
 * Branch: `main` on the GitHub repository <https://github.com/ebxc-7s13/somm>, made **public** on 2026-10-14 after a
   full-history scan found no secrets, keys or personal identifiers (all commits use the GitHub no-reply address).
 * History: logical commits — tooling scaffold, analysis engine, server, client, documentation, CI update.

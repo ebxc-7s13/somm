@@ -32,8 +32,9 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | Group calls | ⏳ | intentionally not built (cost/complexity) |
 | PostgreSQL storage (Neon in production, PGlite locally) | ✅ | all tests on PGlite; production bundle verified against Neon |
 | Installable web app (PWA: manifest, icons, service worker, install prompt) | 🟡 | served and sandbox-tested; installing on a device not yet verified |
-| Free hosting (Render Blueprint + Neon) | 🟡 | Neon database live; Render service needs the owner's Render account (`render.yaml` ready) |
-| Android APK (Capacitor shell, cloud-built and signed) | 🟡 | test build signed and verified in GitHub Actions; the real build needs `SOMM_APP_URL` after the Render deploy; not yet installed on a phone |
+| Free hosting (Render + Neon) | ✅ | live at <https://soundofmymind.onrender.com>; anonymous smoke test passed 2026-10-14 (pages, converter, demo Trees, manifest/service worker/icons, WebSocket and API auth gates) |
+| Continuous deployment | ✅ | CI deploys `main` to Render through the deploy hook only after all checks pass, then confirms `/api/health` reports the new commit (verified with `b541d56`) |
+| Android APK (Capacitor shell, cloud-built and signed) | 🟡 | release `android-6` (0.1.6) published with install notes and SHA-256; anonymous download, server URL and signing key verified; installing on a phone is the owner's check |
 
 ## Known limitations
 
