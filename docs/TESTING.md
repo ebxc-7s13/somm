@@ -7,7 +7,13 @@ npm run lint         # ESLint 10 + typescript-eslint
 npm run check        # typecheck + lint + test + build
 ```
 
-Last full run (2026-10-13, Windows 11, Node 22.23.2): **186 tests in 14 files, all passing**; typecheck and lint clean.
+Last full run (2026-10-14, Windows 11, Node 22.23.2): **192 tests in 15 files, all passing**; typecheck and lint clean.
+
+Database tests run real PostgreSQL SQL through **PGlite** (Postgres compiled to WebAssembly, in-process): nothing to
+install. `tests/global-setup.ts` migrates one database, dumps it, and caches the snapshot under
+`node_modules/.cache/somm` (keyed by PGlite version + migration files); each test worker restores it (~1 s instead of
+~8 s for a fresh `initdb`) and truncates all tables before each test server. PGlite costs ~1 ms per query, so the
+suite takes ~1.5 minutes; workers are capped at half the logical CPUs because they are CPU-bound.
 
 | File | Tests | Covers |
 | --- | --- | --- |
@@ -24,7 +30,8 @@ Last full run (2026-10-13, Windows 11, Node 22.23.2): **186 tests in 14 files, a
 | `tests/ui/components.test.tsx` | 12 | landing copy/CTAs/taglines, demo network failure, map keyboard access + aria labels + selection + search + dimming, list alternative, offline error + retry, empty states, score ring + breakdown, library long names/coverage/version badges, network failure recovery, empty library |
 | `tests/ui/chat.test.tsx` | 3 | untrusted text not rendered as HTML, safe link attributes, hidden messages, length limit, realtime push, offline send keeps draft |
 | `tests/ui/contrast.test.ts` | 21 | WCAG AA (≥ 4.5:1) for 20 token pairs, brand palette values |
-| `tests/security/repository.test.ts` | 6 | .gitignore coverage, placeholder-only .env.example, no secret-looking values, no server secrets or `dangerouslySetInnerHTML` in client code, built bundle free of server config, clean UTF-8 |
+| `tests/security/repository.test.ts` | 8 | .gitignore coverage (incl. signing keys), no keystores in the tree, no database URL in `render.yaml`, placeholder-only .env.example, no secret-looking values, no server secrets or `dangerouslySetInnerHTML` in client code, built bundle free of server config, clean UTF-8 |
+| `tests/unit/service-worker.test.ts` | 4 | `public/sw.js` in a sandbox: never intercepts `/api`, `/ws`, cross-origin or non-GET requests; network-first pages with an offline page; cache-first hashed assets; only the public shell precached; old caches removed |
 
 ## Mocks vs live
 
@@ -44,8 +51,18 @@ link chip, library on mobile (no horizontal scroll), map on mobile. Issues found
 IPv6 only, centre-label collisions, mouse-focus outline on map nodes, mojibake from a shell edit, instrument column
 categories, member self-comparison, identical button names for screen readers.
 
+## Production database check (2026-10-14)
+
+The production bundle ran locally against the Neon database (`DATABASE_URL` from a git-ignored file): migrations
+applied, then sign-up → CSV import (12 tracks) → profile → map → library search → facets → Tree recommendations →
+account deletion. A read-only count afterwards showed 0 users, tracks, artists, playlists and sessions (only 4 shared
+genre-vocabulary rows remain, by design).
+
 ## Not covered
 
 * Real WebRTC media between two devices (only signalling is tested).
 * Live Spotify/YouTube/Apple/MusicBrainz calls (credentials).
 * Automated cross-browser visual tests (no Playwright browsers were downloaded; responsive checks were manual).
+* Service-worker registration in a real browser: the desktop app's embedded browser does not support service workers,
+  so the worker is verified in the sandbox test above; installing the PWA on a phone is a manual check.
+* The Android APK on a device (built only in GitHub Actions, once the app URL and signing secrets are set).

@@ -21,7 +21,7 @@ SOMM is **not** a music player, a Spotify clone, a recommendation chatbot or a g
 | Never ask for provider passwords | Spotify uses OAuth PKCE; Apple uses MusicKit; YouTube uses an API key for public playlists. |
 | Works with partial metadata | Unknown genres appear on an explicit “Genre unknown” branch; insights carry coverage caveats. |
 | Distinguish fact, inference, uncertainty | Every genre/attribute has a `kind` (provided, credited, community, user, inferred) and confidence; inferred values are drawn dashed/orange and never used for matching. |
-| Low cost | One Node process + SQLite; no GPU, no hosted LLM, no paid service required. |
+| Low cost | One Node process + PostgreSQL (free Render + Neon tiers); no GPU, no hosted LLM, no paid service required. |
 | No invented functionality | Unconfigured providers show “Not configured on this server”; calls are marked partially verified. |
 
 ## Users and core journey

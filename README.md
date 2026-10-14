@@ -13,7 +13,8 @@ psychological or demographic profiles.
 
 ## Quick start
 
-Requires **Node.js ≥ 22.13** (uses the built-in `node:sqlite`; no native build, no Docker, no paid services).
+Requires **Node.js ≥ 22.13**. No database server, Docker or paid service is needed locally: without
+`DATABASE_URL`, SOMM uses PGlite, an embedded PostgreSQL compiled to WebAssembly, stored in `./data/pglite`.
 
 ```bash
 npm install
@@ -30,6 +31,15 @@ Production:
 npm run build && npm start   # serves API + WebSocket + built client from one Node process
 ```
 
+## Use it as an app
+
+* **Free hosting:** a Render Blueprint ([`render.yaml`](render.yaml)) runs the web app on Render’s free plan with a
+  free Neon PostgreSQL database. Step by step: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+* **Install from the browser:** SOMM is a Progressive Web App — use “Install app” (Chrome, Edge, Android) or
+  “Add to Home Screen” (iOS Safari). Settings → *Install the app* offers the prompt when the browser allows it.
+* **Android APK:** a GitHub Actions workflow builds a signed APK of the Capacitor shell in `android/` — no Android
+  Studio needed — and publishes it as a GitHub Release.
+
 ## Scripts
 
 | Script | What it does |
@@ -38,6 +48,10 @@ npm run build && npm start   # serves API + WebSocket + built client from one No
 | `npm run build` | Builds the client (`dist/client`) and bundles the server (`dist/server`) with migrations |
 | `npm start` | Runs the production build |
 | `npm test` | Runs all automated tests (Vitest: unit, integration, realtime, UI, security, end-to-end) |
+| `npm run check` | Typecheck, lint, tests and build — what CI runs |
+| `npm run db:migrate` | Applies database migrations (also done automatically on start) |
+| `npm run icons` | Regenerates the PNG app icons and Android launcher/splash images from the logo geometry |
+| `npm run mobile:sync` | Copies the mobile shell into `android/` (for local Android Studio builds) |
 | `npm run typecheck` / `npm run lint` | TypeScript and ESLint |
 | `npm run check` | typecheck + lint + test + build |
 | `npm run seed:demo [-- --reset]` | Seeds 22 **fictional** demo listeners and the Trees the clustering finds |
@@ -79,9 +93,11 @@ Details: [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) and [`docs/BUILD_REP
 
 ```
 src/shared/      Pure TypeScript analysis engine (profile, map layout, insights, similarity, Trees) — no I/O
-src/server/      Hono API, node:sqlite DB + migrations, import adapters, enrichment, realtime hub, services
+src/server/      Hono API, PostgreSQL access (node-postgres / PGlite) + migrations, import adapters, enrichment, realtime hub, services
 src/client/      React app (custom router, design tokens, Music Map renderer, pages)
 tests/           unit · integration · realtime · ui (jsdom) · security · e2e acceptance workflow
+android/         Capacitor Android shell (opens the hosted app); mobile/www/ holds its offline pages
+public/          Static files: manifest, icons, service worker (sw.js)
 docs/            Product, architecture, data model, imports, analysis, matching, privacy, testing, deployment, cost, status, build report
 ```
 

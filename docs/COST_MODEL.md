@@ -13,6 +13,9 @@ for planning; re-check before budgeting — free tiers change).
 | Spotify Web API | no fee; development mode limited to 5 users, owner needs Premium | Spotify Feb 2026 migration guide |
 | Apple Music API | requires paid Apple Developer Program membership | Apple developer documentation (not fetched verbatim) |
 | Cloudflare Realtime TURN | first 1,000 GB/month free (shared with SFU), then $0.05/GB | developers.cloudflare.com/realtime/pricing |
+| Render free web service | $0; 750 instance hours/month; sleeps after 15 min idle (~1 min to wake); WebSockets supported; no persistent disk | render.com/docs/free |
+| Neon free Postgres | $0; suspends when idle; storage and compute-hour caps per project (re-check current numbers) | neon.com/pricing |
+| GitHub Actions (private repo, Free plan) | 2,000 Linux minutes/month (CI ≈ 3–4 min per push; an APK build ≈ 5–10 min, estimate) | docs.github.com/billing |
 
 ## Assumptions
 
@@ -24,8 +27,8 @@ for planning; re-check before budgeting — free tiers change).
 * Activity: 30 % monthly active; peak concurrent WebSocket connections ≈ 10 % of users; ~200 API requests per active user per month.
 * Calls: 5 % of users make one 20-minute call a month; half video (~1.5 Mbps each way), half audio (~50 kbps);
   20 % of calls need TURN relay.
-* Hosting: one small Linux VM or container with a persistent volume. Prices are **assumptions** (typical market rates),
-  not quotes.
+* Hosting: free Render + Neon tiers to start; beyond them one small Linux VM/container or paid tiers. Paid prices are
+  **assumptions** (typical market rates), not quotes.
 
 ## Estimates
 
@@ -41,7 +44,7 @@ for planning; re-check before budgeting — free tiers change).
 | Embedding inference | none (no model) | none | none |
 | Call relay traffic (TURN) | < 1 GB | ~5 GB | ~45 GB — within 1,000 GB free tier |
 | Compute (assumption) | 1 vCPU / 1 GB | 1 vCPU / 2 GB | 2 vCPU / 4 GB |
-| Hosting cost (assumption) | ~$5/month | ~$5–10/month | ~$15–30/month + backups |
+| Hosting cost (assumption) | $0 on free tiers (cold starts) | ~$5–20/month (always-on app; database likely beyond free storage) | ~$15–30/month + backups |
 | Paid APIs | $0 | $0 | $0 (Apple: Developer Program fee if used) |
 
 ## Bottlenecks and mitigations
@@ -50,6 +53,8 @@ for planning; re-check before budgeting — free tiers change).
    in place: one lookup per canonical track for all users, 30-day caching, progressive maps from file metadata. Next:
    self-host a MusicBrainz mirror (open-source server + database dump; needs a VM with ~100 GB disk — assumption) or
    subscribe to the MetaBrainz live data feed; for commercial use also resolve the CC BY-NC-SA genre-tag licence.
-2. **SQLite single writer** handles this write volume comfortably; move to PostgreSQL when running more than one instance.
+2. **Free-tier limits**: Render's free service sleeps (first visit after idle waits ~1 minute) and Neon's free storage
+   suits roughly the 100-user column; an always-on instance and a paid database tier are the first upgrades. Postgres
+   itself handles this write volume comfortably, and the database is already shared if more instances are added.
 3. **Clustering** is O(n²) on discoverable users per batch run — fine for thousands; block by dominant family beyond that.
 4. **Group video** is not offered: an SFU would make bandwidth a server cost (Cloudflare’s SFU shares the 1,000 GB free tier).

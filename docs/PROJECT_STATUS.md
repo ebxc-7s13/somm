@@ -1,4 +1,4 @@
-# Project status (2026-10-13)
+# Project status (2026-10-14)
 
 Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks only · 🔑 blocked on credentials ·
 🟡 partially verified · ⏳ not started
@@ -28,7 +28,10 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | Block / mute / report / moderation queue | ✅ | admin UI is minimal (API + per-message actions) |
 | 1:1 voice/video calls | 🟡 | signalling/authorisation tested on a real WS server; UI built; real two-device media **not verified**; no TURN configured |
 | Group calls | ⏳ | intentionally not built (cost/complexity) |
-| Deployment | ⏳ | Dockerfile + docs; not deployed (no hosting/credentials) |
+| PostgreSQL storage (Neon in production, PGlite locally) | ✅ | all tests on PGlite; production bundle verified against Neon |
+| Installable web app (PWA: manifest, icons, service worker, install prompt) | 🟡 | served and sandbox-tested; installing on a device not yet verified |
+| Free hosting (Render Blueprint + Neon) | 🟡 | Neon database live; Render service needs the owner's Render account (`render.yaml` ready) |
+| Android APK (Capacitor shell, cloud-built and signed) | 🟡 | workflow ready; first build needs `SOMM_APP_URL` after the Render deploy |
 
 ## Known limitations
 
@@ -37,6 +40,8 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 * Tempo/energy are only available from user files (no permitted provider source).
 * No email, so no password recovery; no 2FA.
 * In-memory rate limiting and WebSocket fan-out assume a single instance.
+* On Render's free plan the app sleeps after 15 idle minutes; the next visit waits ~1 minute.
+* The Android app needs a connection (it opens the hosted site); it shows a retry page while the server wakes.
 * Apple Music library import requires a MusicKit JS sign-in screen that is not yet built (catalogue playlist URLs work once configured).
 * The map is SVG; extremely large libraries are capped (160 artists / 600 tracks shown, rest collapsed and listed).
 

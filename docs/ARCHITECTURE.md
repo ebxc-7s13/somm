@@ -8,7 +8,7 @@ lightweight, web-first app that can later gain a native client without changing 
 ## Overview
 
 ```
- Browser (React SPA, PWA manifest)
+ Browser / installed PWA / Android app (Capacitor shell loading the same site)
    │  HTTPS JSON (cookies, same-origin)        WebSocket /ws (cookie auth)
    ▼                                            ▼
  Node.js 22 single process ───────────────────────────────────────────────
@@ -17,11 +17,13 @@ lightweight, web-first app that can later gain a native client without changing 
    ├─ routes/*              └─ call signalling        └─ iTunes Search (optional)
    └─ services/* ──────────── shared analysis engine (pure TS, also used by the client)
                      │
-               node:sqlite (WAL) ── data/somm.sqlite
+               PostgreSQL ── Neon in production (node-postgres pool)
+                          └─ PGlite (embedded, WebAssembly) for local dev and tests
 ```
 
-* **One deployable unit.** API, WebSocket and the built client are served by one Node process; SQLite
-  lives on a disk/volume. No Redis, no queue service, no vector database, no GPU.
+* **One deployable unit.** API, WebSocket and the built client are served by one Node process; data lives in
+  PostgreSQL. No Redis, no queue service, no vector database, no GPU. The free deployment is Render (web service) +
+  Neon (Postgres), both in Singapore; see DEPLOYMENT.md.
 * **Shared, pure analysis engine** (`src/shared/analysis`). Profile statistics, map layout, insights,
   similarity and clustering are deterministic functions with no I/O. The server uses them to compute and
   store profiles; the landing page uses the same code to draw its fictional demo map in the browser.
@@ -34,9 +36,10 @@ lightweight, web-first app that can later gain a native client without changing 
 | Decision | Choice | Why | Alternatives considered |
 | --- | --- | --- | --- |
 | Runtime | Node.js 22 + TypeScript | One language across client, server and engine | — |
-| Database | Built-in `node:sqlite` (SQLite 3.51) | Zero native build, zero cost, single file, WAL concurrency; ample for 10k users on one node | Supabase/Postgres (needs accounts/credentials; documented as the scale-out path), better-sqlite3 (native build) |
+| Database | PostgreSQL: `pg` (node-postgres) against Neon in production; PGlite in-process for development and tests | Free hosted Postgres survives Render’s ephemeral disk; PGlite is real Postgres with nothing to install, so tests run the production SQL | SQLite via `node:sqlite` (the original choice — needs a persistent disk, which free hosts lack), Supabase (also Postgres; more services than needed) |
 | HTTP | Hono + `@hono/node-server` | Small, typed, fast, works with `app.request()` for in-memory tests | Express, Fastify |
 | Realtime | `ws` on the same server | Simple, no external broker; REST writes + WS push + `?after=` gap-fill | Supabase Realtime, SSE |
+| Installable app | PWA (manifest + service worker) and a Capacitor Android shell built by GitHub Actions | One codebase; the APK opens the hosted site, so cookies stay first-party and updates need no new APK | Bundling the client in the APK (needs cross-site cookies/CORS), React Native (second UI codebase) |
 | Validation | zod | Schema validation for every request body | — |
 | Client | React 19 + Vite | Mature, fast build; code-split pages | — |
 | Routing | ~60-line custom History router | Avoids a dependency for a dozen routes | react-router |
@@ -45,16 +48,20 @@ lightweight, web-first app that can later gain a native client without changing 
 | Fonts | Sora (display) + Inter (text), self-hosted via @fontsource | OFL licence; no third-party font requests (privacy) | Google Fonts CDN |
 | ML | None | Deterministic statistics answer the product questions exactly; see MUSIC_ANALYSIS.md | Sentence-Transformers/ONNX (≈100 MB+ runtime) |
 
-`node:sqlite` is marked experimental in Node 22 (it prints an ExperimentalWarning, suppressed in scripts).
-The DB wrapper (`src/server/db/index.ts`) exposes only `all/get/run/tx`, so swapping to better-sqlite3 is a
-one-file change, and the SQL is portable to PostgreSQL apart from `json_each` and `INSERT OR IGNORE`.
+The DB layer (`src/server/db/index.ts`) exposes only async `all/get/run/tx` over either driver. Services write
+`?` (or `:name`) placeholders, converted to `$n`. `tx()` runs a callback in a transaction and routes every query made
+inside it — however deeply nested — to the transaction's connection via `AsyncLocalStorage`, so services never pass
+connection handles around; nested `tx()` calls join the outer transaction. `bigint`/`numeric` columns are parsed as
+JavaScript numbers. Migrations run on start-up inside a transaction holding a Postgres advisory lock, so two
+instances starting together cannot apply one twice. ESLint's type-aware `no-floating-promises` rule guards the
+server and tests against un-awaited queries.
 
 ## Server modules
 
 | Path | Responsibility |
 | --- | --- |
 | `config.ts` | Environment parsing (zod), allowed origins, ICE servers, match weights |
-| `db/` | SQLite wrapper, statement cache, transactions/savepoints, migrations (`migrations/*.sql`) |
+| `db/` | PostgreSQL access (node-postgres pool or PGlite), placeholder conversion, transactions, migrations (`migrations/*.sql`) |
 | `security.ts` | scrypt password hashing, session tokens, PKCE, AES-256-GCM token vault |
 | `http.ts` | Outbound JSON fetch with timeouts, bounded retries, Retry-After, typed `ProviderError`; `RateLimiter` |
 | `import/adapters/` | `files.ts` (CSV, text, M3U, XSPF, JSON, manual), `spotify.ts`, `youtube.ts`, `applemusic.ts`, `urls.ts` |
@@ -99,9 +106,10 @@ ringing after 45 s, records call metadata (never media) and ends calls when a pa
 
 ## Scaling path
 
-* **10k users on one node** is within SQLite’s comfort zone (see COST_MODEL.md). The first bottleneck is
+* **10k users on one node** is comfortable for one Postgres database (see COST_MODEL.md). The first bottleneck is
   MusicBrainz’s 1 request/second limit for *new* catalogue tracks — mitigated by global caching, and at
   scale by hosting a MusicBrainz mirror (open source) or the MetaBrainz live data feed.
-* **Multiple instances** would need: PostgreSQL (port the migration), a shared rate-limit store, pub/sub for
-  WebSocket fan-out (e.g. Postgres LISTEN/NOTIFY or Redis), and moving the enrichment worker to one leader.
-* **Native Android** can reuse the API and WebSocket protocol unchanged.
+* **Multiple instances** would need: a shared rate-limit store, pub/sub for WebSocket fan-out (e.g. Postgres
+  LISTEN/NOTIFY or Redis), and moving the enrichment worker to one leader. The database is already shared.
+* **Android** runs today as a Capacitor shell around the hosted site; a fully native client could reuse the API and
+  WebSocket protocol unchanged.

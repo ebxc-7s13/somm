@@ -45,7 +45,7 @@ Nothing was deployed and nothing was committed.
 ## 3. Important architectural decisions
 
 1. **One process, SQLite, no paid services** — zero-config, cheap, reproducible; PostgreSQL is the documented scale-out path.
-2. **`node:sqlite`** over better-sqlite3 — no native compilation (experimental in Node 22; wrapper keeps it swappable).
+2. **`node:sqlite`** over better-sqlite3 — no native compilation (experimental in Node 22; wrapper keeps it swappable). *Replaced by PostgreSQL in phase 2 (§16) for free hosting without a persistent disk.*
 3. **Pure shared analysis engine** — deterministic, testable, reused by the browser for the landing map.
 4. **Server-computed deterministic map layout + custom SVG renderer** with level-of-detail, instead of a force-graph library.
 5. **No neural embeddings** — short categorical metadata is handled exactly by statistics; an optional non-overlapping tag
@@ -218,7 +218,24 @@ See PROJECT_STATUS.md. Highest value next: set `MUSICBRAINZ_CONTACT` and validat
 register a Spotify dev app; configure TURN and test a two-device call; add a recovery code; validate match weights
 with consented engagement data; add Playwright tests; deploy behind HTTPS with backups.
 
-## 16. Git status
+## 16. Phase 2 (2026-10-14): installable app and free hosting
+
+* **Database moved from `node:sqlite` to PostgreSQL** so the app can run on hosts without a persistent disk. The data
+  layer is async (`pg` pool against Neon; PGlite for local development and tests), with `AsyncLocalStorage`-scoped
+  transactions, `$n` placeholder conversion and advisory-locked migrations. SQL was ported (`ON CONFLICT`, `RETURNING`,
+  `GREATEST`, `string_agg`, `jsonb_array_elements_text`, `ILIKE`). The realtime hub queues each connection's frames
+  in order and writes call records in order per call. A type-aware lint rule rejects un-awaited promises.
+* **Free hosting:** `render.yaml` Blueprint (free web service, Singapore, health check, generated encryption key,
+  database URL entered as a secret). The Neon database (`somm`, Singapore) was created and the production bundle was
+  verified against it.
+* **PWA:** manifest with PNG and maskable icons (rendered by a dependency-free script), a service worker that never
+  caches `/api` or `/ws`, an offline page, and an install panel in Settings.
+* **Android:** Capacitor 8 shell (`android/`) that opens the hosted site, with offline/retry pages, call permissions,
+  backups disabled, and release signing from CI secrets; `.github/workflows/android.yml` builds, verifies and
+  publishes a signed APK on GitHub's runners (nothing installed locally).
+* Tests: 192 passing (PGlite snapshot setup; new service-worker and repository checks).
+
+## 17. Git status
 
 * Branch: `main`, pushed to the private GitHub repository <https://github.com/ebxc-7s13/somm> (2026-10-14).
 * History: logical commits — tooling scaffold, analysis engine, server, client, documentation, CI update.
