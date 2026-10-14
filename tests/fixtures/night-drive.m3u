@@ -1,0 +1,9 @@
+#EXTM3U
+#PLAYLIST:Night Drive
+#EXTINF:252,Nova Lattice - Glass Orbit
+C:\Users\someone\Music\Nova Lattice\Glass Orbit.flac
+#EXTINF:238,Kilo Ray - Midnight Relay
+https://example.invalid/stream/midnight-relay.mp3
+#EXTINF:301,Unstructured title without separator
+/music/unknown.mp3
+Pulse Garden - Fern Circuit.mp3
