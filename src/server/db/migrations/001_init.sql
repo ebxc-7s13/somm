@@ -1,10 +1,11 @@
--- SOMM initial schema. See docs/DATA_MODEL.md for the privacy class of every table.
--- Timestamps are ISO-8601 UTC strings. IDs are random URL-safe strings unless noted.
+-- SOMM initial schema (PostgreSQL 15+; PGlite locally). See docs/DATA_MODEL.md for the
+-- privacy class of every table. Timestamps are ISO-8601 UTC strings (sortable as text).
+-- IDs are random URL-safe strings unless noted. Flags are 0/1 integers.
 
 -- ---------------------------------------------------------------- accounts
 CREATE TABLE users (
   id                 TEXT PRIMARY KEY,
-  handle             TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  handle             TEXT NOT NULL UNIQUE CHECK (handle = lower(handle)),
   display_name       TEXT NOT NULL,
   password_hash      TEXT,                 -- NULL for temporary demo accounts
   is_demo            INTEGER NOT NULL DEFAULT 0, -- 0 real, 1 temporary demo visitor, 2 seeded fictional listener
@@ -81,7 +82,7 @@ CREATE TABLE tracks (
   release_year      INTEGER,
   isrc              TEXT,
   explicit          INTEGER,
-  tempo_bpm         REAL,
+  tempo_bpm         DOUBLE PRECISION,
   tempo_source      TEXT,
   fallback_key      TEXT NOT NULL,           -- normalized title|artist|version
   enrichment_status TEXT NOT NULL DEFAULT 'pending' CHECK (enrichment_status IN ('pending', 'done', 'not_found', 'error', 'skipped')),
@@ -118,7 +119,7 @@ CREATE TABLE external_ids (
 CREATE INDEX external_ids_entity ON external_ids(entity_type, entity_id);
 
 CREATE TABLE genres (
-  id     INTEGER PRIMARY KEY,
+  id     SERIAL PRIMARY KEY,
   name   TEXT NOT NULL UNIQUE,               -- canonical key (see shared/taxonomy.ts)
   family TEXT NOT NULL
 );
@@ -130,7 +131,7 @@ CREATE TABLE track_genres (
   genre_id   INTEGER NOT NULL REFERENCES genres(id),
   source     TEXT NOT NULL,                  -- spotify | apple_music | musicbrainz | itunes
   kind       TEXT NOT NULL CHECK (kind IN ('provided', 'credited', 'community', 'inferred')),
-  confidence REAL NOT NULL,
+  confidence DOUBLE PRECISION NOT NULL,
   created_at TEXT NOT NULL,
   PRIMARY KEY (track_id, genre_id, source)
 );
@@ -142,7 +143,7 @@ CREATE TABLE track_attributes (
   value      TEXT NOT NULL,
   source     TEXT NOT NULL,
   kind       TEXT NOT NULL CHECK (kind IN ('provided', 'credited', 'community', 'inferred')),
-  confidence REAL NOT NULL,
+  confidence DOUBLE PRECISION NOT NULL,
   evidence   TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY (track_id, category, value, source)
@@ -199,7 +200,7 @@ CREATE TABLE playlist_tracks (
   hidden          INTEGER NOT NULL DEFAULT 0, -- excluded from public listings by the owner
   user_genres     TEXT,                      -- JSON array, from the user's own file
   user_attributes TEXT,                      -- JSON array of {category,value}
-  user_bpm        REAL,
+  user_bpm        DOUBLE PRECISION,
   added_at        TEXT NOT NULL
 );
 CREATE INDEX playlist_tracks_playlist ON playlist_tracks(playlist_id, position);
@@ -251,7 +252,7 @@ CREATE TABLE music_profiles (
 CREATE TABLE profile_artists (
   user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   artist_id TEXT NOT NULL,
-  weight    REAL NOT NULL,
+  weight    DOUBLE PRECISION NOT NULL,
   PRIMARY KEY (user_id, artist_id)
 );
 CREATE INDEX profile_artists_artist ON profile_artists(artist_id);
@@ -275,7 +276,7 @@ CREATE TABLE music_matches (
   target_type TEXT NOT NULL CHECK (target_type IN ('community', 'user')),
   target_id   TEXT NOT NULL,
   input_hash  TEXT NOT NULL,
-  score       REAL NOT NULL,
+  score       DOUBLE PRECISION NOT NULL,
   label       TEXT NOT NULL,
   result_json TEXT NOT NULL,
   computed_at TEXT NOT NULL,
@@ -328,11 +329,11 @@ CREATE TABLE community_name_votes (
 );
 
 CREATE TABLE community_messages (
-  id            INTEGER PRIMARY KEY AUTOINCREMENT, -- monotonic: clients fill gaps with ?after=<id>
+  id            BIGSERIAL PRIMARY KEY,         -- monotonic: clients fill gaps with ?after=<id>
   community_id  TEXT NOT NULL REFERENCES communities(id) ON DELETE CASCADE,
   user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body          TEXT NOT NULL,
-  reply_to_id   INTEGER REFERENCES community_messages(id) ON DELETE SET NULL,
+  reply_to_id   BIGINT REFERENCES community_messages(id) ON DELETE SET NULL,
   ref_type      TEXT CHECK (ref_type IN ('track', 'artist', 'album')),
   ref_id        TEXT,
   ref_label     TEXT,

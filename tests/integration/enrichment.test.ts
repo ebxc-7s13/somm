@@ -2,6 +2,7 @@
  * Enrichment pipeline with a mocked MusicBrainz web service (fictional data).
  */
 import { describe, expect, it } from 'vitest';
+import { all } from '../../src/server/db';
 import { MusicBrainzClient, pickRecording, userAgentFor, weightGenres } from '../../src/server/enrich/musicbrainz';
 import { createTestServer, csv } from '../helpers/server';
 import { json, mockFetch, noSleep } from '../helpers/mockfetch';
@@ -83,7 +84,7 @@ describe('enrichment queue', () => {
   it('stores genres, credits and tags with provenance and updates the profile', async () => {
     const { fetchImpl } = mbRoutes();
     const musicbrainz = new MusicBrainzClient('maintainer@example.invalid', fetchImpl, { intervalMs: 0, sleep: noSleep });
-    const { client, ctx } = createTestServer({ musicbrainz });
+    const { client, ctx } = await createTestServer({ musicbrainz });
     const a = client();
     await a.signup('enricher');
     const content = 'title,artist,isrc,duration\nGlass Orbit,Nova Lattice,QZFAK1900001,4:12\nQuiet Engine,Teo Vance,,6:15';
@@ -124,14 +125,14 @@ describe('enrichment queue', () => {
     expect(profile.profile.coverage.genre).toBe(1);
     expect(profile.pendingEnrichment).toBe(0);
     // Junk tags are discarded; unmapped descriptive tags are kept for the optional text component.
-    const tags = ctx.db.prepare('SELECT tag FROM track_tags').all() as { tag: string }[];
+    const tags = await all<{ tag: string }>(ctx.db, 'SELECT tag FROM track_tags');
     expect(tags.map((t) => t.tag)).toEqual(['night driving']);
   });
 
   it('caches lookups so the same song is not fetched twice', async () => {
     const { fetchImpl, calls } = mbRoutes();
     const musicbrainz = new MusicBrainzClient('maintainer@example.invalid', fetchImpl, { intervalMs: 0, sleep: noSleep });
-    const { client, ctx } = createTestServer({ musicbrainz });
+    const { client, ctx } = await createTestServer({ musicbrainz });
     const a = client();
     await a.signup('cache-a');
     await a.importCsv('title,artist,isrc\nGlass Orbit,Nova Lattice,QZFAK1900001');
@@ -147,7 +148,7 @@ describe('enrichment queue', () => {
   it('marks unmatched songs as not found instead of guessing', async () => {
     const { fetchImpl } = mbRoutes({ searchHits: false });
     const musicbrainz = new MusicBrainzClient('maintainer@example.invalid', fetchImpl, { intervalMs: 0, sleep: noSleep });
-    const { client, ctx } = createTestServer({ musicbrainz });
+    const { client, ctx } = await createTestServer({ musicbrainz });
     const a = client();
     await a.signup('unmatched');
     const { jobId } = await a.importCsv(csv([['Imaginary Song', 'Nobody Real']]));
@@ -162,7 +163,7 @@ describe('enrichment queue', () => {
   it('records provider failures as partial results and supports retry', async () => {
     const failing = mbRoutes({ fail503: true });
     const musicbrainz = new MusicBrainzClient('maintainer@example.invalid', failing.fetchImpl, { intervalMs: 0, sleep: noSleep });
-    const { client, ctx } = createTestServer({ musicbrainz });
+    const { client, ctx } = await createTestServer({ musicbrainz });
     const a = client();
     await a.signup('flaky');
     const { jobId } = await a.importCsv(csv([['Imaginary Song', 'Nobody Real']]));

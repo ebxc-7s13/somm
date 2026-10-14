@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { normalizeWeights, type MatchWeights } from '../shared/analysis/similarity';
@@ -29,8 +30,13 @@ const optional = z
 const schema = z.object({
   NODE_ENV: z.string().optional().default('development'),
   PORT: z.coerce.number().int().positive().default(8787),
-  PUBLIC_URL: z.string().default('http://127.0.0.1:5173'),
-  DATABASE_PATH: z.string().default('./data/somm.sqlite'),
+  PUBLIC_URL: optional,
+  // Render sets these automatically for web services.
+  RENDER_EXTERNAL_URL: optional,
+  RENDER_EXTERNAL_HOSTNAME: optional,
+  DATABASE_URL: optional,
+  PGLITE_DATA_DIR: z.string().default('./data/pglite'),
+  TRUST_PROXY: bool(false),
   TOKEN_ENCRYPTION_KEY: optional,
   DEMO_MODE_ENABLED: bool(true),
   ADMIN_HANDLES: optional,
@@ -57,7 +63,12 @@ export interface AppConfig {
   port: number;
   publicUrl: string;
   allowedOrigins: string[];
-  databasePath: string;
+  /** postgres:// URL (production) or null to use PGlite. */
+  databaseUrl: string | null;
+  /** PGlite data directory, or "memory://". */
+  pgliteDataDir: string;
+  /** Trust X-Forwarded-For (set when running behind a proxy such as Render). */
+  trustProxy: boolean;
   tokenEncryptionKey: Buffer | null;
   demoModeEnabled: boolean;
   adminHandles: string[];
@@ -74,9 +85,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = schema.parse(env);
   let key: Buffer | null = null;
   if (parsed.TOKEN_ENCRYPTION_KEY) {
-    const buf = Buffer.from(parsed.TOKEN_ENCRYPTION_KEY, 'base64');
-    if (buf.length !== 32) throw new Error('TOKEN_ENCRYPTION_KEY must be 32 bytes encoded as base64.');
-    key = buf;
+    const raw = parsed.TOKEN_ENCRYPTION_KEY;
+    const decoded = Buffer.from(raw, 'base64');
+    if (decoded.length === 32) key = decoded;
+    else if (raw.length >= 32) key = createHash('sha256').update(raw).digest(); // any long random secret works
+    else throw new Error('TOKEN_ENCRYPTION_KEY must be 32 bytes as base64, or a random string of at least 32 characters.');
   }
   let weights: Partial<MatchWeights> | undefined;
   if (parsed.MATCH_WEIGHTS) {
@@ -86,7 +99,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       throw new Error('MATCH_WEIGHTS must be valid JSON, e.g. {"tracks":0.4,"artists":0.25,"genres":0.2,"attributes":0.15}');
     }
   }
-  const publicUrl = parsed.PUBLIC_URL.replace(/\/$/, '');
+  const publicUrl = (
+    parsed.PUBLIC_URL ??
+    parsed.RENDER_EXTERNAL_URL ??
+    (parsed.RENDER_EXTERNAL_HOSTNAME ? `https://${parsed.RENDER_EXTERNAL_HOSTNAME}` : 'http://127.0.0.1:5173')
+  ).replace(/\/$/, '');
   const origins = new Set([publicUrl]);
   // In development the API is also reachable directly and via the Vite proxy.
   if (parsed.NODE_ENV !== 'production') {
@@ -109,7 +126,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: parsed.PORT,
     publicUrl,
     allowedOrigins: [...origins],
-    databasePath: parsed.DATABASE_PATH,
+    databaseUrl: parsed.DATABASE_URL,
+    pgliteDataDir: parsed.PGLITE_DATA_DIR,
+    trustProxy: parsed.TRUST_PROXY || !!parsed.RENDER_EXTERNAL_HOSTNAME,
     tokenEncryptionKey: key,
     demoModeEnabled: parsed.DEMO_MODE_ENABLED,
     adminHandles: (parsed.ADMIN_HANDLES ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),

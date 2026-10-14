@@ -69,14 +69,21 @@ export function sanitizeBody(raw: string): string {
 }
 
 /** Users hidden from `viewerId`: people they blocked or muted, and people who blocked them. */
-export function hiddenAuthors(db: DB, viewerId: string): Set<string> {
+export async function hiddenAuthors(db: DB, viewerId: string): Promise<Set<string>> {
   return new Set(
-    all<{ id: string }>(
-      db,
-      "SELECT target_user_id AS id FROM blocks WHERE user_id = ? UNION SELECT user_id AS id FROM blocks WHERE target_user_id = ? AND kind = 'block'",
-      [viewerId, viewerId],
+    (
+      await all<{ id: string }>(
+        db,
+        "SELECT target_user_id AS id FROM blocks WHERE user_id = ? UNION SELECT user_id AS id FROM blocks WHERE target_user_id = ? AND kind = 'block'",
+        [viewerId, viewerId],
+      )
     ).map((r) => r.id),
   );
+}
+
+function messageId(raw: string | number): number | null {
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
 }
 
 interface MessageRow {
@@ -126,28 +133,28 @@ export function toMessage(row: MessageRow, viewerId: string): ChatMessage {
   };
 }
 
-export function requireMember(db: DB, communityId: string, userId: string) {
-  const m = isMember(db, communityId, userId);
+export async function requireMember(db: DB, communityId: string, userId: string) {
+  const m = await isMember(db, communityId, userId);
   if (!m) throw new ChatError('Join this Tree to read and post in its chat.', 403, 'not_member');
   return m;
 }
 
-export function listMessages(
+export async function listMessages(
   db: DB,
   communityId: string,
   viewerId: string,
   opts: { before?: number; after?: number; limit?: number },
-): { messages: ChatMessage[]; hasMore: boolean } {
-  requireMember(db, communityId, viewerId);
+): Promise<{ messages: ChatMessage[]; hasMore: boolean }> {
+  await requireMember(db, communityId, viewerId);
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
-  const hide = hiddenAuthors(db, viewerId);
+  const hide = await hiddenAuthors(db, viewerId);
   let rows: MessageRow[];
   if (opts.after !== undefined) {
-    rows = all<MessageRow>(db, `${SELECT_MESSAGES} WHERE m.community_id = ? AND m.id > ? ORDER BY m.id ASC LIMIT ?`, [communityId, opts.after, limit + 1]);
+    rows = await all<MessageRow>(db, `${SELECT_MESSAGES} WHERE m.community_id = ? AND m.id > ? ORDER BY m.id ASC LIMIT ?`, [communityId, opts.after, limit + 1]);
     const hasMore = rows.length > limit;
     return { messages: rows.slice(0, limit).filter((r) => !hide.has(r.user_id)).map((r) => toMessage(r, viewerId)), hasMore };
   }
-  rows = all<MessageRow>(
+  rows = await all<MessageRow>(
     db,
     `${SELECT_MESSAGES} WHERE m.community_id = ? ${opts.before !== undefined ? 'AND m.id < ?' : ''} ORDER BY m.id DESC LIMIT ?`,
     opts.before !== undefined ? [communityId, opts.before, limit + 1] : [communityId, limit + 1],
@@ -163,8 +170,8 @@ export function listMessages(
   };
 }
 
-export function getMessage(db: DB, id: number, viewerId: string): ChatMessage | null {
-  const row = get<MessageRow>(db, `${SELECT_MESSAGES} WHERE m.id = ?`, [id]);
+export async function getMessage(db: DB, id: number, viewerId: string): Promise<ChatMessage | null> {
+  const row = await get<MessageRow>(db, `${SELECT_MESSAGES} WHERE m.id = ?`, [id]);
   return row ? toMessage(row, viewerId) : null;
 }
 
@@ -174,15 +181,15 @@ export interface PostInput {
   ref?: { type: 'track' | 'artist' | 'album'; id: string } | null;
 }
 
-export function postMessage(db: DB, communityId: string, userId: string, input: PostInput): ChatMessage {
-  requireMember(db, communityId, userId);
+export async function postMessage(db: DB, communityId: string, userId: string, input: PostInput): Promise<ChatMessage> {
+  await requireMember(db, communityId, userId);
   const body = sanitizeBody(input.body ?? '');
   if (!body && !input.ref) throw new ChatError('Messages cannot be empty.', 400, 'empty');
   if (body.length > MESSAGE_MAX_LENGTH) throw new ChatError(`Messages are limited to ${MESSAGE_MAX_LENGTH} characters.`, 400, 'too_long');
 
   let replyTo: number | null = null;
   if (input.replyToId) {
-    const parent = get<{ community_id: string }>(db, 'SELECT community_id FROM community_messages WHERE id = ?', [input.replyToId]);
+    const parent = await get<{ community_id: string }>(db, 'SELECT community_id FROM community_messages WHERE id = ?', [input.replyToId]);
     if (!parent || parent.community_id !== communityId) throw new ChatError('The message you replied to is not in this Tree.', 400, 'bad_reply');
     replyTo = input.replyToId;
   }
@@ -191,7 +198,7 @@ export function postMessage(db: DB, communityId: string, userId: string, input: 
   if (input.ref) {
     if (input.ref.type === 'track') {
       // You can only share tracks from your own library.
-      const t = get<{ title: string; version: string | null; artist: string }>(
+      const t = await get<{ title: string; version: string | null; artist: string }>(
         db,
         `SELECT t.title, t.version, a.name AS artist FROM tracks t JOIN artists a ON a.id = t.primary_artist_id
          WHERE t.id = ? AND EXISTS (SELECT 1 FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id WHERE pt.track_id = t.id AND p.user_id = ?)`,
@@ -200,11 +207,11 @@ export function postMessage(db: DB, communityId: string, userId: string, input: 
       if (!t) throw new ChatError('You can only share tracks from your own library.', 400, 'bad_ref');
       ref = { type: 'track', id: input.ref.id, label: `${t.title}${t.version ? ` (${t.version})` : ''} — ${t.artist}` };
     } else if (input.ref.type === 'artist') {
-      const a = get<{ name: string }>(db, 'SELECT name FROM artists WHERE id = ?', [input.ref.id]);
+      const a = await get<{ name: string }>(db, 'SELECT name FROM artists WHERE id = ?', [input.ref.id]);
       if (!a) throw new ChatError('Unknown artist.', 400, 'bad_ref');
       ref = { type: 'artist', id: input.ref.id, label: a.name };
     } else {
-      const al = get<{ title: string; artist: string | null }>(
+      const al = await get<{ title: string; artist: string | null }>(
         db,
         'SELECT al.title, a.name AS artist FROM albums al LEFT JOIN artists a ON a.id = al.primary_artist_id WHERE al.id = ?',
         [input.ref.id],
@@ -215,57 +222,64 @@ export function postMessage(db: DB, communityId: string, userId: string, input: 
   }
 
   const link = extractLink(body);
-  const r = run(
+  const inserted = await get<{ id: number }>(
     db,
     `INSERT INTO community_messages (community_id, user_id, body, reply_to_id, ref_type, ref_id, ref_label, link_url, link_provider, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [communityId, userId, body, replyTo, ref?.type ?? null, ref?.id ?? null, ref ? cleanDisplayText(ref.label, 200) : null, link?.url ?? null, link?.provider ?? null, nowIso()],
   );
-  return getMessage(db, r.lastInsertRowid, userId)!;
+  return (await getMessage(db, inserted!.id, userId))!;
 }
 
-export function deleteOwnMessage(db: DB, communityId: string, messageId: number, userId: string): boolean {
-  return run(db, 'DELETE FROM community_messages WHERE id = ? AND community_id = ? AND user_id = ?', [messageId, communityId, userId]).changes > 0;
+export async function deleteOwnMessage(db: DB, communityId: string, id: number, userId: string): Promise<boolean> {
+  if (!messageId(id)) return false;
+  return (await run(db, 'DELETE FROM community_messages WHERE id = ? AND community_id = ? AND user_id = ?', [id, communityId, userId])).changes > 0;
 }
 
-export function hideMessage(db: DB, communityId: string, messageId: number, reason: string): boolean {
-  return run(db, 'UPDATE community_messages SET hidden = 1, hidden_reason = ? WHERE id = ? AND community_id = ?', [reason, messageId, communityId]).changes > 0;
+export async function hideMessage(db: DB, communityId: string, id: number, reason: string): Promise<boolean> {
+  if (!messageId(id)) return false;
+  return (await run(db, 'UPDATE community_messages SET hidden = 1, hidden_reason = ? WHERE id = ? AND community_id = ?', [reason, id, communityId])).changes > 0;
 }
 
 export type ReportReason = 'spam' | 'harassment' | 'hate' | 'sexual' | 'self_harm' | 'copyright' | 'other';
 
 /** File a report. Messages reported by AUTO_HIDE_REPORTS distinct members are hidden pending review. */
-export function fileReport(
+export async function fileReport(
   db: DB,
   reporterId: string,
   target: { type: 'message' | 'user' | 'community'; id: string },
   reason: ReportReason,
   details: string | null,
-): { id: string; autoHidden: boolean } {
+): Promise<{ id: string; autoHidden: boolean }> {
   if (target.type === 'message') {
-    const m = get<{ community_id: string; user_id: string }>(db, 'SELECT community_id, user_id FROM community_messages WHERE id = ?', [Number(target.id)]);
+    const mid = messageId(target.id);
+    const m = mid ? await get<{ community_id: string; user_id: string }>(db, 'SELECT community_id, user_id FROM community_messages WHERE id = ?', [mid]) : undefined;
     if (!m) throw new ChatError('Message not found.', 404, 'not_found');
-    requireMember(db, m.community_id, reporterId);
+    await requireMember(db, m.community_id, reporterId);
     if (m.user_id === reporterId) throw new ChatError('You cannot report your own message.', 400, 'self_report');
   } else if (target.type === 'user') {
-    if (!get(db, 'SELECT 1 FROM users WHERE id = ?', [target.id])) throw new ChatError('User not found.', 404, 'not_found');
+    if (!(await get(db, 'SELECT 1 FROM users WHERE id = ?', [target.id]))) throw new ChatError('User not found.', 404, 'not_found');
     if (target.id === reporterId) throw new ChatError('You cannot report yourself.', 400, 'self_report');
-  } else if (!get(db, 'SELECT 1 FROM communities WHERE id = ?', [target.id])) {
+  } else if (!(await get(db, 'SELECT 1 FROM communities WHERE id = ?', [target.id]))) {
     throw new ChatError('Tree not found.', 404, 'not_found');
   }
   const id = newId();
-  const inserted = run(
-    db,
-    'INSERT OR IGNORE INTO reports (id, reporter_id, target_type, target_id, reason, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, reporterId, target.type, target.id, reason, details ? cleanDisplayText(details, 500) : null, nowIso()],
+  const inserted = (
+    await run(
+      db,
+      'INSERT INTO reports (id, reporter_id, target_type, target_id, reason, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
+      [id, reporterId, target.type, target.id, reason, details ? cleanDisplayText(details, 500) : null, nowIso()],
+    )
   ).changes;
   let autoHidden = false;
   if (target.type === 'message') {
-    const n = get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM reports WHERE target_type = 'message' AND target_id = ? AND status = 'open'", [target.id])!.n;
+    const n = (await get<{ n: number }>(db, "SELECT COUNT(*) AS n FROM reports WHERE target_type = 'message' AND target_id = ? AND status = 'open'", [target.id]))!.n;
     if (n >= AUTO_HIDE_REPORTS) {
-      run(db, "UPDATE community_messages SET hidden = 1, hidden_reason = 'reported' WHERE id = ?", [Number(target.id)]);
+      await run(db, "UPDATE community_messages SET hidden = 1, hidden_reason = 'reported' WHERE id = ?", [messageId(target.id)]);
       autoHidden = true;
     }
   }
-  return { id: inserted ? id : get<{ id: string }>(db, 'SELECT id FROM reports WHERE reporter_id = ? AND target_type = ? AND target_id = ?', [reporterId, target.type, target.id])!.id, autoHidden };
+  if (inserted) return { id, autoHidden };
+  const existing = await get<{ id: string }>(db, 'SELECT id FROM reports WHERE reporter_id = ? AND target_type = ? AND target_id = ?', [reporterId, target.type, target.id]);
+  return { id: existing!.id, autoHidden };
 }

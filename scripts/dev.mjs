@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 
 const isWin = process.platform === 'win32';
 const npx = isWin ? 'npx.cmd' : 'npx';
-const env = { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --disable-warning=ExperimentalWarning`.trim() };
+const env = process.env;
 
 const procs = [
   spawn(npx, ['tsx', 'watch', '--clear-screen=false', 'src/server/index.ts'], { stdio: 'inherit', env, shell: isWin }),

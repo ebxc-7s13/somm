@@ -3,13 +3,14 @@
  * through the HTTP API with the fictional demo community seeded.
  */
 import { describe, expect, it } from 'vitest';
+import { get } from '../../src/server/db';
 import { seedDemo } from '../../src/server/seed/demo';
 import { createTestServer } from '../helpers/server';
 
 describe('SOMM acceptance workflow', () => {
   it('demo account → import → map → insights → Tree match → join → chat → privacy → deletion', async () => {
-    const server = createTestServer();
-    const seeded = seedDemo(server.ctx.db, server.ctx.config);
+    const server = await createTestServer();
+    const seeded = await seedDemo(server.ctx.db, server.ctx.config);
     expect(seeded.listeners).toBe(22);
     expect(seeded.trees).toBeGreaterThanOrEqual(5);
 
@@ -90,13 +91,13 @@ describe('SOMM acceptance workflow', () => {
     expect(removed.body.playlistsDeleted).toBe(1);
     expect((await me.get('/api/library/tracks')).body.total).toBe(0);
     // Demo listeners' (fictional) catalogue survives; only this user's data is gone.
-    expect((server.ctx.db.prepare('SELECT COUNT(*) AS n FROM tracks').get() as { n: number }).n).toBeGreaterThan(100);
+    expect((await get<{ n: number }>(server.ctx.db, 'SELECT COUNT(*) AS n FROM tracks'))!.n).toBeGreaterThan(100);
   });
 
   it('seeding is idempotent, and demo listeners cannot sign in', async () => {
-    const server = createTestServer();
-    seedDemo(server.ctx.db, server.ctx.config);
-    expect(seedDemo(server.ctx.db, server.ctx.config).skipped).toBe(true);
+    const server = await createTestServer();
+    await seedDemo(server.ctx.db, server.ctx.config);
+    expect((await seedDemo(server.ctx.db, server.ctx.config)).skipped).toBe(true);
     const r = await server.client().post('/api/auth/signin', { handle: 'aurora.wave', password: 'anything-at-all' });
     expect(r.status).toBe(401);
     const trees = (await server.client().get('/api/trees')).body.trees;

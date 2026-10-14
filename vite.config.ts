@@ -3,11 +3,6 @@ import react from '@vitejs/plugin-react';
 
 const API_PORT = Number(process.env.PORT ?? 8787);
 
-// node:sqlite prints an ExperimentalWarning on Node 22; keep test output readable.
-if (!process.env.NODE_OPTIONS?.includes('--disable-warning=ExperimentalWarning')) {
-  process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ''} --disable-warning=ExperimentalWarning`.trim();
-}
-
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -30,7 +25,13 @@ export default defineConfig({
     include: ['tests/**/*.test.{ts,tsx}'],
     environment: 'node',
     setupFiles: ['tests/setup.ts'],
-    testTimeout: 15000,
+    globalSetup: ['tests/global-setup.ts'],
+    // PGlite (in-process Postgres) is slower per query than the production server.
+    testTimeout: 60000,
+    hookTimeout: 60000,
     pool: 'forks',
+    // PGlite workers are CPU-bound; more workers than physical cores only slows
+    // everything down and can starve new workers until they time out on start-up.
+    maxWorkers: '50%',
   },
 });

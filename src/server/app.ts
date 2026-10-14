@@ -28,17 +28,17 @@ export interface ContextOptions {
   ringTimeoutMs?: number;
 }
 
-export function createAppContext(config: AppConfig, options: ContextOptions = {}): AppContext {
-  const db = options.db ?? openDatabase(config.databasePath);
+export async function createAppContext(config: AppConfig, options: ContextOptions = {}): Promise<AppContext> {
+  const db = options.db ?? (await openDatabase({ url: config.databaseUrl, dataDir: config.pgliteDataDir }));
   const mbConfigured = config.musicbrainz.enabled && !!config.musicbrainz.contact;
   const musicbrainz =
     options.musicbrainz !== undefined ? options.musicbrainz : mbConfigured ? new MusicBrainzClient(config.musicbrainz.contact!, options.fetchImpl) : null;
   const itunes = options.itunes !== undefined ? options.itunes : config.itunesLookupEnabled ? new ItunesClient(options.fetchImpl) : null;
 
-  const refreshUsers = (userIds: string[]) => {
+  const refreshUsers = async (userIds: string[]) => {
     for (const id of new Set(userIds)) {
-      const changed = recomputeProfile(db, id);
-      if (changed.shared) recomputeUserCommunities(db, id);
+      const changed = await recomputeProfile(db, id);
+      if (changed.shared) await recomputeUserCommunities(db, id);
     }
   };
 
@@ -116,7 +116,7 @@ export function createApp(ctx: AppContext) {
         throw new ApiError(415, 'unsupported_media_type', 'Send JSON.');
       }
     }
-    c.set('user', sessionUser(ctx.db, getCookie(c, SESSION_COOKIE)));
+    c.set('user', await sessionUser(ctx.db, getCookie(c, SESSION_COOKIE)));
     c.header('Cache-Control', 'no-store');
     await next();
   });

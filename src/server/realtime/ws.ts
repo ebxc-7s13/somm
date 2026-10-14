@@ -18,6 +18,16 @@ export function attachWebSocket(server: Server, ctx: AppContext): WebSocketServe
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+    void upgrade(req, socket, head).catch((err: unknown) => {
+      console.error('[realtime] upgrade failed:', err instanceof Error ? err.message : err);
+      if (!socket.destroyed) {
+        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
+        socket.destroy();
+      }
+    });
+  });
+
+  async function upgrade(req: IncomingMessage, socket: Duplex, head: Buffer) {
     const url = new URL(req.url ?? '/', 'http://localhost');
     if (url.pathname !== '/ws') return socket.destroy();
     const origin = req.headers.origin;
@@ -25,7 +35,7 @@ export function attachWebSocket(server: Server, ctx: AppContext): WebSocketServe
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       return socket.destroy();
     }
-    const user = sessionUser(ctx.db, readCookie(req.headers.cookie, SESSION_COOKIE));
+    const user = await sessionUser(ctx.db, readCookie(req.headers.cookie, SESSION_COOKIE));
     if (!user) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       return socket.destroy();
@@ -42,7 +52,7 @@ export function attachWebSocket(server: Server, ctx: AppContext): WebSocketServe
       heartbeat.unref?.();
       ws.on('message', (data, isBinary) => {
         if (isBinary) return;
-        ctx.hub.handle(connId, data.toString());
+        void ctx.hub.handle(connId, data.toString());
       });
       ws.on('close', () => {
         clearInterval(heartbeat);
@@ -50,7 +60,7 @@ export function attachWebSocket(server: Server, ctx: AppContext): WebSocketServe
       });
       ws.on('error', () => ws.close());
     });
-  });
+  }
 
   return wss;
 }

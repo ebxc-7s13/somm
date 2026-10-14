@@ -14,23 +14,30 @@ import { housekeeping } from './services/accounts';
 
 loadDotEnv();
 const config = loadConfig();
-const ctx = createAppContext(config);
+const ctx = await createAppContext(config);
 const app = createApp(ctx);
-
-// Opt-in: populate the fictional demo community (idempotent) for demo deployments.
-if (process.env.SEED_DEMO_ON_START === 'true') {
-  const seeded = seedDemo(ctx.db, config);
-  if (!seeded.skipped) console.log(`[somm] seeded ${seeded.listeners} fictional demo listeners and ${seeded.trees} Trees`);
-}
+console.log(`[somm] database: ${ctx.db.kind === 'pg' ? 'PostgreSQL (DATABASE_URL)' : `PGlite (${config.pgliteDataDir})`}`);
 
 const clientDir = resolve('dist/client');
 if (existsSync(join(clientDir, 'index.html'))) {
   const indexHtml = readFileSync(join(clientDir, 'index.html'), 'utf8');
-  app.use('/assets/*', serveStatic({ root: './dist/client' }));
-  app.use('/favicon.svg', serveStatic({ root: './dist/client' }));
-  app.use('/manifest.webmanifest', serveStatic({ root: './dist/client' }));
+  // Hashed build output can be cached forever; everything else must revalidate.
+  app.use('/assets/*', async (c, next) => {
+    await next();
+    if (c.res.ok) c.header('Cache-Control', 'public, max-age=31536000, immutable');
+  });
+  app.use('/sw.js', async (c, next) => {
+    await next();
+    c.header('Cache-Control', 'no-cache');
+  });
+  for (const path of ['/assets/*', '/icons/*', '/favicon.svg', '/manifest.webmanifest', '/sw.js', '/robots.txt']) {
+    app.use(path, serveStatic({ root: './dist/client' }));
+  }
   // Single-page app: any other GET returns index.html.
-  app.get('*', (c) => c.html(indexHtml));
+  app.get('*', (c) => {
+    c.header('Cache-Control', 'no-cache');
+    return c.html(indexHtml);
+  });
 }
 
 const server = serve({ fetch: app.fetch, port: config.port, hostname: process.env.HOST ?? '127.0.0.1' }, (info) => {
@@ -42,29 +49,38 @@ const server = serve({ fetch: app.fetch, port: config.port, hostname: process.en
 const wss = attachWebSocket(server, ctx);
 ctx.queue.start();
 
-const tidy = () => {
+// Opt-in: populate the fictional demo community (idempotent) for demo deployments.
+// Runs after the server is listening so health checks pass during a cold start.
+if (process.env.SEED_DEMO_ON_START === 'true') {
+  void seedDemo(ctx.db, config)
+    .then((seeded) => {
+      if (!seeded.skipped) console.log(`[somm] seeded ${seeded.listeners} fictional demo listeners and ${seeded.trees} Trees`);
+    })
+    .catch((err: unknown) => console.error('[somm] demo seeding failed', err instanceof Error ? err.message : err));
+}
+
+const tidy = async () => {
   try {
-    const r = housekeeping(ctx.db);
-    if (r.expiredPlaylists.length) ctx.refreshUsers(r.expiredPlaylists);
+    const r = await housekeeping(ctx.db);
+    if (r.expiredPlaylists.length) await ctx.refreshUsers(r.expiredPlaylists);
   } catch (err) {
     console.error('[somm] housekeeping failed', err instanceof Error ? err.message : err);
   }
 };
-tidy();
-const housekeepingTimer = setInterval(tidy, 15 * 60 * 1000);
+void tidy();
+const housekeepingTimer = setInterval(() => void tidy(), 15 * 60 * 1000);
 housekeepingTimer.unref();
 
 async function shutdown(signal: string) {
   console.log(`[somm] ${signal} received, shutting down`);
+  setTimeout(() => process.exit(0), 8000).unref();
   clearInterval(housekeepingTimer);
-  ctx.hub.closeAll();
+  await ctx.hub.closeAll();
   wss.close();
   await ctx.queue.stop();
   server.close(() => {
-    ctx.db.close();
-    process.exit(0);
+    void ctx.db.close().finally(() => process.exit(0));
   });
-  setTimeout(() => process.exit(0), 5000).unref();
 }
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));

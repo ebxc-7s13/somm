@@ -5,7 +5,10 @@ import { generateProposals } from '../services/communities';
 
 loadDotEnv();
 const config = loadConfig();
-const db = openDatabase(config.databasePath);
-const r = generateProposals(db, config.matchWeights);
-console.log(`[somm] clusters: ${r.clusters}, new proposed Trees: ${r.created.length}, existing Trees extended: ${r.extended.length}`);
-db.close();
+const db = await openDatabase({ url: config.databaseUrl, dataDir: config.pgliteDataDir });
+try {
+  const r = await generateProposals(db, config.matchWeights);
+  console.log(`[somm] clusters: ${r.clusters}, new proposed Trees: ${r.created.length}, existing Trees extended: ${r.extended.length}`);
+} finally {
+  await db.close();
+}

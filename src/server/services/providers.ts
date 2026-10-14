@@ -70,9 +70,9 @@ export class ProviderService {
     );
   }
 
-  statuses(userId: string | null): ProviderStatus[] {
-    const spotifyConnected = userId ? !!this.connection(userId, 'spotify') : false;
-    const appleConnected = userId ? !!this.connection(userId, 'apple_music') : false;
+  async statuses(userId: string | null): Promise<ProviderStatus[]> {
+    const spotifyConnected = userId ? !!(await this.connection(userId, 'spotify')) : false;
+    const appleConnected = userId ? !!(await this.connection(userId, 'apple_music')) : false;
     return [
       {
         id: 'files',
@@ -182,22 +182,22 @@ export class ProviderService {
 
   // ----------------------------------------------------------- Spotify OAuth
 
-  spotifyAuthorize(userId: string): string {
+  async spotifyAuthorize(userId: string): Promise<string> {
     if (!this.spotifyConfigured) throw new ImportError('Spotify is not configured on this server.', 'needs_credentials', 503);
     const state = randomBytes(24).toString('base64url');
     const { url, verifier } = spotifyAuthorizeUrl(this.config.spotify.clientId!, this.config.spotify.redirectUri!, state);
-    run(this.db, 'DELETE FROM oauth_states WHERE created_at < ?', [nowIso(-15 * 60 * 1000)]);
-    run(this.db, 'INSERT INTO oauth_states (state, user_id, provider, code_verifier, created_at) VALUES (?, ?, ?, ?, ?)', [state, userId, 'spotify', verifier, nowIso()]);
+    await run(this.db, 'DELETE FROM oauth_states WHERE created_at < ?', [nowIso(-15 * 60 * 1000)]);
+    await run(this.db, 'INSERT INTO oauth_states (state, user_id, provider, code_verifier, created_at) VALUES (?, ?, ?, ?, ?)', [state, userId, 'spotify', verifier, nowIso()]);
     return url;
   }
 
   async spotifyCallback(userId: string, code: string, state: string): Promise<void> {
-    const row = get<{ user_id: string; code_verifier: string; created_at: string }>(
+    const row = await get<{ user_id: string; code_verifier: string; created_at: string }>(
       this.db,
       "SELECT user_id, code_verifier, created_at FROM oauth_states WHERE state = ? AND provider = 'spotify'",
       [state],
     );
-    run(this.db, 'DELETE FROM oauth_states WHERE state = ?', [state]);
+    await run(this.db, 'DELETE FROM oauth_states WHERE state = ?', [state]);
     if (!row || row.user_id !== userId || row.created_at < nowIso(-10 * 60 * 1000)) {
       throw new ImportError('The Spotify sign-in link expired or does not belong to this session. Please try again.', 'not_authorized', 400);
     }
@@ -208,41 +208,41 @@ export class ProviderService {
       verifier: row.code_verifier,
       fetchImpl: this.fetchImpl,
     });
-    this.storeTokens(userId, 'spotify', tokens.accessToken, tokens.refreshToken, tokens.expiresAt, tokens.scope);
+    await this.storeTokens(userId, 'spotify', tokens.accessToken, tokens.refreshToken, tokens.expiresAt, tokens.scope);
   }
 
-  storeTokens(userId: string, provider: string, access: string, refresh: string | null, expiresAt: string | null, scope: string | null) {
+  async storeTokens(userId: string, provider: string, access: string, refresh: string | null, expiresAt: string | null, scope: string | null): Promise<void> {
     if (!this.vault) throw new ImportError('Token storage is not configured (TOKEN_ENCRYPTION_KEY).', 'needs_credentials', 503);
     const now = nowIso();
-    run(
+    await run(
       this.db,
       `INSERT INTO provider_connections (id, user_id, provider, access_token_enc, refresh_token_enc, scope, expires_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (user_id, provider) DO UPDATE SET access_token_enc = excluded.access_token_enc,
-         refresh_token_enc = COALESCE(excluded.refresh_token_enc, refresh_token_enc), scope = excluded.scope,
+         refresh_token_enc = COALESCE(excluded.refresh_token_enc, provider_connections.refresh_token_enc), scope = excluded.scope,
          expires_at = excluded.expires_at, updated_at = excluded.updated_at`,
       [newId(), userId, provider, this.vault.encrypt(access), refresh ? this.vault.encrypt(refresh) : null, scope, expiresAt, now, now],
     );
   }
 
-  disconnect(userId: string, provider: string): boolean {
-    return run(this.db, 'DELETE FROM provider_connections WHERE user_id = ? AND provider = ?', [userId, provider]).changes > 0;
+  async disconnect(userId: string, provider: string): Promise<boolean> {
+    return (await run(this.db, 'DELETE FROM provider_connections WHERE user_id = ? AND provider = ?', [userId, provider])).changes > 0;
   }
 
   async spotifyClient(userId: string): Promise<SpotifyClient> {
     if (!this.spotifyConfigured) throw new ImportError('Spotify is not configured on this server.', 'needs_credentials', 503);
-    const conn = this.connection(userId, 'spotify');
+    const conn = await this.connection(userId, 'spotify');
     if (!conn) throw new ImportError('Connect your Spotify account first.', 'needs_connection', 401);
     let access: string;
     try {
       access = this.vault!.decrypt(conn.access_token_enc);
     } catch {
-      this.disconnect(userId, 'spotify');
+      await this.disconnect(userId, 'spotify');
       throw new ImportError('Your Spotify connection expired (server key changed). Please reconnect.', 'needs_connection', 401);
     }
     if (conn.expires_at && conn.expires_at < nowIso(60_000) && conn.refresh_token_enc) {
       const refreshed = await refreshSpotifyToken({ clientId: this.config.spotify.clientId!, refreshToken: this.vault!.decrypt(conn.refresh_token_enc), fetchImpl: this.fetchImpl });
-      this.storeTokens(userId, 'spotify', refreshed.accessToken, refreshed.refreshToken, refreshed.expiresAt, refreshed.scope);
+      await this.storeTokens(userId, 'spotify', refreshed.accessToken, refreshed.refreshToken, refreshed.expiresAt, refreshed.scope);
       access = refreshed.accessToken;
     }
     return new SpotifyClient(access, this.fetchImpl);
@@ -262,9 +262,9 @@ export class ProviderService {
     return this.appleToken.token;
   }
 
-  appleClient(userId: string): AppleMusicClient {
+  async appleClient(userId: string): Promise<AppleMusicClient> {
     const devToken = this.appleDeveloperToken();
-    const conn = this.connection(userId, 'apple_music');
+    const conn = await this.connection(userId, 'apple_music');
     let userToken: string | null = null;
     if (conn && this.vault) {
       try {

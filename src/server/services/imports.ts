@@ -62,7 +62,7 @@ async function readSource(input: PreviewInput, userId: string, providers: Provid
     case 'apple_music': {
       const ref = parseAppleMusicPlaylist(input.playlist);
       if (ref.provider !== 'apple_music') throw new ImportError('Unsupported Apple Music link.', 'invalid_input');
-      return providers.appleClient(userId).getPlaylist(ref);
+      return (await providers.appleClient(userId)).getPlaylist(ref);
     }
   }
 }
@@ -90,10 +90,10 @@ export async function previewImport(db: DB, userId: string, input: PreviewInput,
     }
     throw err;
   }
-  const entries = classifyEntries(db, userId, raw.entries);
+  const entries = await classifyEntries(db, userId, raw.entries);
   const draftId = newId();
-  run(db, 'DELETE FROM import_drafts WHERE expires_at < ?', [nowIso()]);
-  run(db, 'INSERT INTO import_drafts (id, user_id, provider, payload, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)', [
+  await run(db, 'DELETE FROM import_drafts WHERE expires_at < ?', [nowIso()]);
+  await run(db, 'INSERT INTO import_drafts (id, user_id, provider, payload, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)', [
     draftId, userId, raw.provider, JSON.stringify(raw), nowIso(), nowIso(DRAFT_TTL_MS),
   ]);
   const count = (s: PreviewEntry['status']) => entries.filter((e) => e.status === s).length;
@@ -115,15 +115,15 @@ export async function previewImport(db: DB, userId: string, input: PreviewInput,
   };
 }
 
-export function commitImport(db: DB, userId: string, draftId: string, input: CommitInput): { jobId: string; playlistId: string; imported: number } {
-  const draft = get<{ payload: string; expires_at: string }>(db, 'SELECT payload, expires_at FROM import_drafts WHERE id = ? AND user_id = ?', [draftId, userId]);
+export async function commitImport(db: DB, userId: string, draftId: string, input: CommitInput): Promise<{ jobId: string; playlistId: string; imported: number }> {
+  const draft = await get<{ payload: string; expires_at: string }>(db, 'SELECT payload, expires_at FROM import_drafts WHERE id = ? AND user_id = ?', [draftId, userId]);
   if (!draft) throw new ImportError('This import preview was not found. Start the import again.', 'not_found', 404);
   if (draft.expires_at < nowIso()) {
-    run(db, 'DELETE FROM import_drafts WHERE id = ?', [draftId]);
+    await run(db, 'DELETE FROM import_drafts WHERE id = ?', [draftId]);
     throw new ImportError('This import preview expired. Start the import again.', 'not_found', 410);
   }
   const raw = JSON.parse(draft.payload) as RawPlaylist;
-  const classified = classifyEntries(db, userId, raw.entries);
+  const classified = await classifyEntries(db, userId, raw.entries);
   const skip = new Set(input.skipRows);
   const include = new Set(input.includeRows);
   const selected = raw.entries.filter((e, i) => !skip.has(e.row) && (!classified[i]!.skipByDefault || include.has(e.row)));
@@ -133,8 +133,8 @@ export function commitImport(db: DB, userId: string, draftId: string, input: Com
   const jobId = newId();
   const now = nowIso();
   let merged = 0;
-  tx(db, () => {
-    run(
+  await tx(db, async () => {
+    await run(
       db,
       `INSERT INTO playlists (id, user_id, name, provider, source_ref, source_url, visibility, track_count, data_expires_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -143,16 +143,19 @@ export function commitImport(db: DB, userId: string, draftId: string, input: Com
         selected.length, raw.retentionDays ? nowIso(raw.retentionDays * 24 * 3600 * 1000) : null, now, now,
       ],
     );
-    selected.forEach((entry, position) => {
-      const { trackId, method } = resolveTrack(db, entry);
+    for (const [position, entry] of selected.entries()) {
+      const { trackId, method } = await resolveTrack(db, entry);
       if (method !== 'new') merged++;
       // User-typed genres stay on this playlist entry (canonical names), never on the shared track.
-      const userGenres =
-        entry.genreKind === 'user'
-          ? [...new Set((entry.genres ?? []).map((g) => ensureGenre(db, g)?.name).filter((g): g is string => !!g))]
-          : [];
+      const userGenres: string[] = [];
+      if (entry.genreKind === 'user') {
+        for (const g of entry.genres ?? []) {
+          const name = (await ensureGenre(db, g))?.name;
+          if (name && !userGenres.includes(name)) userGenres.push(name);
+        }
+      }
       const source = entry.providerIds?.[0];
-      run(
+      await run(
         db,
         `INSERT INTO playlist_tracks (id, playlist_id, track_id, position, raw_title, raw_artist, raw_album, source_track_id, source_url,
            match_method, user_genres, user_attributes, user_bpm, added_at)
@@ -163,14 +166,14 @@ export function commitImport(db: DB, userId: string, draftId: string, input: Com
           userGenres.length ? JSON.stringify(userGenres) : null, entry.attributes?.length ? JSON.stringify(entry.attributes) : null, entry.bpm ?? null, now,
         ],
       );
-    });
-    run(
+    }
+    await run(
       db,
       `INSERT INTO import_jobs (id, user_id, playlist_id, status, total, skipped, merged, message, errors, created_at, updated_at)
        VALUES (?, ?, ?, 'enriching', ?, ?, ?, ?, ?, ?, ?)`,
       [jobId, userId, playlistId, selected.length, raw.entries.length - selected.length, merged, raw.notes.join(' ') || null, JSON.stringify(raw.errors), now, now],
     );
-    run(db, 'DELETE FROM import_drafts WHERE id = ?', [draftId]);
+    await run(db, 'DELETE FROM import_drafts WHERE id = ?', [draftId]);
   });
   return { jobId, playlistId, imported: selected.length };
 }
@@ -192,8 +195,8 @@ export interface JobProgress {
   finishedAt: string | null;
 }
 
-export function jobProgress(db: DB, userId: string, jobId: string): JobProgress | null {
-  const job = get<{ id: string; playlist_id: string | null; status: JobProgress['status']; total: number; skipped: number; merged: number; message: string | null; errors: string | null; created_at: string; finished_at: string | null }>(
+export async function jobProgress(db: DB, userId: string, jobId: string): Promise<JobProgress | null> {
+  const job = await get<{ id: string; playlist_id: string | null; status: JobProgress['status']; total: number; skipped: number; merged: number; message: string | null; errors: string | null; created_at: string; finished_at: string | null }>(
     db,
     'SELECT id, playlist_id, status, total, skipped, merged, message, errors, created_at, finished_at FROM import_jobs WHERE id = ? AND user_id = ?',
     [jobId, userId],
@@ -205,8 +208,8 @@ export function jobProgress(db: DB, userId: string, jobId: string): JobProgress 
   const enrichmentErrors: JobProgress['enrichmentErrors'] = [];
   let playlistName: string | null = null;
   if (job.playlist_id) {
-    playlistName = get<{ name: string }>(db, 'SELECT name FROM playlists WHERE id = ?', [job.playlist_id])?.name ?? null;
-    for (const r of all<{ status: string; n: number }>(
+    playlistName = (await get<{ name: string }>(db, 'SELECT name FROM playlists WHERE id = ?', [job.playlist_id]))?.name ?? null;
+    for (const r of await all<{ status: string; n: number }>(
       db,
       'SELECT t.enrichment_status AS status, COUNT(*) AS n FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id WHERE pt.playlist_id = ? GROUP BY t.enrichment_status',
       [job.playlist_id],
@@ -216,12 +219,14 @@ export function jobProgress(db: DB, userId: string, jobId: string): JobProgress 
       total += r.n;
     }
     withGenre =
-      get<{ n: number }>(
-        db,
-        `SELECT COUNT(*) AS n FROM playlist_tracks pt WHERE pt.playlist_id = ? AND (pt.user_genres IS NOT NULL OR EXISTS (SELECT 1 FROM track_genres tg WHERE tg.track_id = pt.track_id))`,
-        [job.playlist_id],
+      (
+        await get<{ n: number }>(
+          db,
+          `SELECT COUNT(*) AS n FROM playlist_tracks pt WHERE pt.playlist_id = ? AND (pt.user_genres IS NOT NULL OR EXISTS (SELECT 1 FROM track_genres tg WHERE tg.track_id = pt.track_id))`,
+          [job.playlist_id],
+        )
       )?.n ?? 0;
-    for (const r of all<{ title: string; message: string | null }>(
+    for (const r of await all<{ title: string; message: string | null }>(
       db,
       "SELECT t.display_title AS title, t.enrichment_error AS message FROM playlist_tracks pt JOIN tracks t ON t.id = pt.track_id WHERE pt.playlist_id = ? AND t.enrichment_status = 'error' LIMIT 20",
       [job.playlist_id],
@@ -248,15 +253,15 @@ export function jobProgress(db: DB, userId: string, jobId: string): JobProgress 
 }
 
 /** Re-queue tracks in this job's playlist that failed or were skipped (e.g. after configuring MusicBrainz). */
-export function retryJob(db: DB, userId: string, jobId: string): number {
-  const job = get<{ playlist_id: string | null }>(db, 'SELECT playlist_id FROM import_jobs WHERE id = ? AND user_id = ?', [jobId, userId]);
+export async function retryJob(db: DB, userId: string, jobId: string): Promise<number> {
+  const job = await get<{ playlist_id: string | null }>(db, 'SELECT playlist_id FROM import_jobs WHERE id = ? AND user_id = ?', [jobId, userId]);
   if (!job?.playlist_id) throw new ImportError('Import job not found.', 'not_found', 404);
-  const r = run(
+  const r = await run(
     db,
     `UPDATE tracks SET enrichment_status = 'pending', enrichment_error = NULL, updated_at = ?
      WHERE enrichment_status IN ('error', 'skipped') AND id IN (SELECT track_id FROM playlist_tracks WHERE playlist_id = ?)`,
     [nowIso(), job.playlist_id],
   );
-  if (r.changes > 0) run(db, "UPDATE import_jobs SET status = 'enriching', finished_at = NULL, updated_at = ? WHERE id = ?", [nowIso(), jobId]);
+  if (r.changes > 0) await run(db, "UPDATE import_jobs SET status = 'enriching', finished_at = NULL, updated_at = ? WHERE id = ?", [nowIso(), jobId]);
   return r.changes;
 }

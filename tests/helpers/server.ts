@@ -1,14 +1,15 @@
+import { readFileSync } from 'node:fs';
+import { inject } from 'vitest';
 import { createApp, createAppContext, type ContextOptions } from '../../src/server/app';
 import { loadConfig } from '../../src/server/config';
 import type { AppContext } from '../../src/server/context';
-import { openDatabase } from '../../src/server/db';
+import { openDatabase, resetDatabase, type DB } from '../../src/server/db';
 
 export const ORIGIN = 'http://127.0.0.1:5173';
 
 export function testConfig(env: Record<string, string> = {}) {
   return loadConfig({
     NODE_ENV: 'test',
-    DATABASE_PATH: ':memory:',
     PUBLIC_URL: ORIGIN,
     MUSICBRAINZ_ENABLED: 'false',
     DEMO_MODE_ENABLED: 'true',
@@ -16,12 +17,38 @@ export function testConfig(env: Record<string, string> = {}) {
   } as NodeJS.ProcessEnv);
 }
 
-export function createTestServer(options: { env?: Record<string, string> } & ContextOptions = {}) {
+let sharedDb: Promise<DB> | null = null;
+let previous: AppContext | null = null;
+
+/**
+ * One in-memory PGlite database per test file (vitest runs each file in its own
+ * worker), restored from the snapshot built in tests/global-setup.ts and emptied
+ * before each test server is created. A fresh database per test would dominate
+ * the run time.
+ */
+export async function testDatabase(): Promise<DB> {
+  if (previous) {
+    // Let the previous test's background work finish before its tables are truncated.
+    await previous.queue.stop();
+    await previous.hub.closeAll();
+    previous = null;
+  }
+  sharedDb ??= openDatabase({ dataDir: null, snapshot: new Blob([readFileSync(inject('pgliteSnapshot'))]) });
+  const db = await sharedDb;
+  await resetDatabase(db);
+  return db;
+}
+
+export async function createTestServer(options: { env?: Record<string, string> } & ContextOptions = {}) {
   const config = testConfig(options.env);
-  const ctx = createAppContext(config, { db: openDatabase(':memory:'), musicbrainz: options.musicbrainz ?? null, ...options });
+  const db = options.db ?? (await testDatabase());
+  const ctx = await createAppContext(config, { musicbrainz: options.musicbrainz ?? null, ...options, db });
+  previous = ctx;
   const app = createApp(ctx);
   return { app, ctx, client: () => new TestClient(app, ctx) };
 }
+
+export type TestServer = Awaited<ReturnType<typeof createTestServer>>;
 
 type App = ReturnType<typeof createApp>;
 

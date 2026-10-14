@@ -43,15 +43,15 @@ const settingsSchema = z.object({
   onboarded: z.boolean().optional(),
 });
 
-export function meSummary(c: C) {
+export async function meSummary(c: C) {
   const user = requireUser(c);
   const { db } = c.get('ctx');
-  const counts = get<{ playlists: number; tracks: number }>(
+  const counts = (await get<{ playlists: number; tracks: number }>(
     db,
     'SELECT (SELECT COUNT(*) FROM playlists WHERE user_id = ?) AS playlists, (SELECT COUNT(DISTINCT pt.track_id) FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id WHERE p.user_id = ?) AS tracks',
     [user.id, user.id],
-  )!;
-  const memberships = get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM community_memberships WHERE user_id = ?', [user.id])!.n;
+  ))!;
+  const memberships = (await get<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM community_memberships WHERE user_id = ?', [user.id]))!.n;
   return { user, counts: { ...counts, memberships }, isAdmin: c.get('ctx').config.adminHandles.includes(user.handle) };
 }
 
@@ -59,31 +59,33 @@ export const authRoutes = new Hono<Env>()
   .post('/auth/signup', async (c) => {
     rateLimit(c, `auth:${clientIp(c)}`, LIMITS.auth);
     const body = credentials.parse(await c.req.json());
-    const user = await signup(c.get('ctx').db, body.handle, body.password, body.displayName);
-    setSessionCookie(c, createSession(c.get('ctx').db, user.id), SESSION_TTL_MS);
+    const { db } = c.get('ctx');
+    const user = await signup(db, body.handle, body.password, body.displayName);
+    setSessionCookie(c, await createSession(db, user.id), SESSION_TTL_MS);
     return c.json({ user }, 201);
   })
   .post('/auth/signin', async (c) => {
     rateLimit(c, `auth:${clientIp(c)}`, LIMITS.auth);
     const body = credentials.parse(await c.req.json());
-    const user = await signin(c.get('ctx').db, body.handle, body.password);
-    setSessionCookie(c, createSession(c.get('ctx').db, user.id), SESSION_TTL_MS);
+    const { db } = c.get('ctx');
+    const user = await signin(db, body.handle, body.password);
+    setSessionCookie(c, await createSession(db, user.id), SESSION_TTL_MS);
     return c.json({ user });
   })
-  .post('/auth/demo', (c) => {
+  .post('/auth/demo', async (c) => {
     const { config, db } = c.get('ctx');
     if (!config.demoModeEnabled) throw new ApiError(403, 'demo_disabled', 'Demo mode is disabled on this server.');
     rateLimit(c, `auth:${clientIp(c)}`, LIMITS.auth);
-    const user = createDemoAccount(db);
-    setSessionCookie(c, createSession(db, user.id, DEMO_TTL_MS), DEMO_TTL_MS);
+    const user = await createDemoAccount(db);
+    setSessionCookie(c, await createSession(db, user.id, DEMO_TTL_MS), DEMO_TTL_MS);
     return c.json({ user }, 201);
   })
-  .post('/auth/signout', (c) => {
-    destroySession(c.get('ctx').db, getCookie(c, SESSION_COOKIE));
+  .post('/auth/signout', async (c) => {
+    await destroySession(c.get('ctx').db, getCookie(c, SESSION_COOKIE));
     deleteCookie(c, SESSION_COOKIE, { path: '/' });
     return c.json({ ok: true });
   })
-  .get('/me', (c) => c.json(meSummary(c)))
+  .get('/me', async (c) => c.json(await meSummary(c)))
   .patch('/me', async (c) => {
     const user = requireUser(c);
     const { db, refreshUsers } = c.get('ctx');
@@ -91,27 +93,27 @@ export const authRoutes = new Hono<Env>()
     if (body.displayName !== undefined) {
       const name = cleanDisplayText(body.displayName, 40);
       if (!name) throw new ApiError(400, 'invalid_name', 'Display names cannot be empty.');
-      run(db, 'UPDATE users SET display_name = ? WHERE id = ?', [name, user.id]);
+      await run(db, 'UPDATE users SET display_name = ? WHERE id = ?', [name, user.id]);
     }
-    if (body.bio !== undefined) run(db, 'UPDATE users SET bio = ? WHERE id = ?', [cleanDisplayText(body.bio, 280), user.id]);
-    if (body.profileVisibility) run(db, 'UPDATE users SET profile_visibility = ? WHERE id = ?', [body.profileVisibility, user.id]);
-    if (body.discoverable !== undefined) run(db, 'UPDATE users SET discoverable = ? WHERE id = ?', [body.discoverable ? 1 : 0, user.id]);
-    if (body.showMemberships !== undefined) run(db, 'UPDATE users SET show_memberships = ? WHERE id = ?', [body.showMemberships ? 1 : 0, user.id]);
-    if (body.onboarded !== undefined) run(db, 'UPDATE users SET onboarded = ? WHERE id = ?', [body.onboarded ? 1 : 0, user.id]);
-    if (body.discoverable !== undefined) refreshUsers([user.id]);
-    return c.json({ user: userById(db, user.id) });
+    if (body.bio !== undefined) await run(db, 'UPDATE users SET bio = ? WHERE id = ?', [cleanDisplayText(body.bio, 280), user.id]);
+    if (body.profileVisibility) await run(db, 'UPDATE users SET profile_visibility = ? WHERE id = ?', [body.profileVisibility, user.id]);
+    if (body.discoverable !== undefined) await run(db, 'UPDATE users SET discoverable = ? WHERE id = ?', [body.discoverable ? 1 : 0, user.id]);
+    if (body.showMemberships !== undefined) await run(db, 'UPDATE users SET show_memberships = ? WHERE id = ?', [body.showMemberships ? 1 : 0, user.id]);
+    if (body.onboarded !== undefined) await run(db, 'UPDATE users SET onboarded = ? WHERE id = ?', [body.onboarded ? 1 : 0, user.id]);
+    if (body.discoverable !== undefined) await refreshUsers([user.id]);
+    return c.json({ user: await userById(db, user.id) });
   })
-  .get('/me/export', (c) => {
+  .get('/me/export', async (c) => {
     const user = requireUser(c);
     c.header('Content-Disposition', `attachment; filename="somm-export-${user.handle}.json"`);
-    return c.json(exportAccount(c.get('ctx').db, user.id));
+    return c.json(await exportAccount(c.get('ctx').db, user.id));
   })
-  .delete('/me/library', (c) => {
+  .delete('/me/library', async (c) => {
     const user = requireUser(c);
     const { db } = c.get('ctx');
-    const playlists = deleteLibrary(db, user.id);
-    recomputeProfile(db, user.id, true);
-    recomputeUserCommunities(db, user.id);
+    const playlists = await deleteLibrary(db, user.id);
+    await recomputeProfile(db, user.id, true);
+    await recomputeUserCommunities(db, user.id);
     return c.json({ ok: true, playlistsDeleted: playlists });
   })
   .delete('/me', async (c) => {
@@ -121,7 +123,7 @@ export const authRoutes = new Hono<Env>()
       throw new ApiError(400, 'confirmation_mismatch', 'Type your handle exactly to confirm deletion.');
     }
     const { db, hub } = c.get('ctx');
-    deleteAccount(db, user.id);
+    await deleteAccount(db, user.id);
     hub.sendToUser(user.id, { type: 'account_deleted' });
     deleteCookie(c, SESSION_COOKIE, { path: '/' });
     return c.json({ ok: true });

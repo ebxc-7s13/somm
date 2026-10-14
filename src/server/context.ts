@@ -19,7 +19,7 @@ export interface AppContext {
   limiter: SlidingWindowLimiter;
   fetchImpl?: FetchLike;
   /** Recompute profiles + Tree aggregates for users whose libraries changed. */
-  refreshUsers: (userIds: string[]) => void;
+  refreshUsers: (userIds: string[]) => Promise<void>;
 }
 
 export type Env = { Variables: { user: SessionUser | null; ctx: AppContext } };
@@ -44,6 +44,11 @@ export function requireUser(c: C): SessionUser {
 }
 
 export function clientIp(c: C): string {
+  // Behind a trusted proxy (e.g. Render) the socket address is the proxy; use the first forwarded hop.
+  if (c.get('ctx').config.trustProxy) {
+    const forwarded = c.req.header('x-forwarded-for')?.split(',')[0]?.trim();
+    if (forwarded) return forwarded;
+  }
   const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
   return env?.incoming?.socket?.remoteAddress ?? 'local';
 }

@@ -1,69 +1,185 @@
 /**
- * SQLite access via Node's built-in `node:sqlite` (no native build step).
- * The wrapper is intentionally thin so it can be swapped for better-sqlite3
- * (same synchronous API shape) or ported to PostgreSQL — see docs/ARCHITECTURE.md.
+ * PostgreSQL access with two interchangeable drivers:
+ *   - production: `pg` (node-postgres) against DATABASE_URL (e.g. Neon);
+ *   - local development and tests: PGlite — Postgres compiled to WebAssembly,
+ *     running in-process with nothing to install (data in ./data/pglite or memory).
+ *
+ * Call sites use `all / get / run / tx` with `?` placeholders (or `:name` with an
+ * object), which are rewritten to `$1…$n`. Inside `tx(db, fn)` every query is routed
+ * to the transaction's connection automatically (AsyncLocalStorage), so code does not
+ * need to pass a transaction handle around.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { PGlite } from '@electric-sql/pglite';
+import pg from 'pg';
 
-export type DB = DatabaseSync;
-export type Params = Record<string, SQLInputValue> | SQLInputValue[];
+export type Param = string | number | boolean | null | undefined;
+export type Params = Record<string, Param> | Param[];
 
-const statementCache = new WeakMap<DB, Map<string, ReturnType<DB['prepare']>>>();
+interface Queryable {
+  query(text: string, values: unknown[]): Promise<{ rows: unknown[]; rowCount: number }>;
+  /** Multi-statement SQL without parameters (migrations). */
+  exec(sql: string): Promise<void>;
+}
 
-function statement(db: DB, sql: string) {
-  let cache = statementCache.get(db);
-  if (!cache) {
-    cache = new Map();
-    statementCache.set(db, cache);
+export interface DB extends Queryable {
+  kind: 'pglite' | 'pg';
+  transaction<T>(fn: (q: Queryable) => Promise<T>): Promise<T>;
+  close(): Promise<void>;
+  /** PGlite only. */
+  dump?(): Promise<Blob>;
+}
+
+const INT8 = 20;
+const NUMERIC = 1700;
+
+// ------------------------------------------------------------------ drivers
+
+async function openPglite(dataDir: string | null, snapshot?: Blob): Promise<DB> {
+  if (dataDir) mkdirSync(dataDir, { recursive: true });
+  const db = await PGlite.create(dataDir ?? undefined, {
+    parsers: { [INT8]: (v: string) => Number(v), [NUMERIC]: (v: string) => Number(v) },
+    ...(snapshot ? { loadDataDir: snapshot } : {}),
+  });
+  const wrap = (q: Pick<PGlite, 'query' | 'exec'>): Queryable => ({
+    async query(text, values) {
+      const r = await q.query(text, values);
+      return { rows: r.rows as unknown[], rowCount: r.affectedRows ?? r.rows.length };
+    },
+    async exec(sql) {
+      await q.exec(sql);
+    },
+  });
+  const base = wrap(db);
+  return {
+    kind: 'pglite',
+    ...base,
+    transaction: (fn) => db.transaction((tx) => fn(wrap(tx))),
+    close: () => db.close(),
+    dump: () => db.dumpDataDir('none'),
+  };
+}
+
+let pgParsersSet = false;
+
+async function openPg(connectionString: string): Promise<DB> {
+  if (!pgParsersSet) {
+    pg.types.setTypeParser(INT8, (v) => Number(v));
+    pg.types.setTypeParser(NUMERIC, (v) => Number(v));
+    pgParsersSet = true;
   }
-  let stmt = cache.get(sql);
-  if (!stmt) {
-    stmt = db.prepare(sql);
-    cache.set(sql, stmt);
+  const url = new URL(connectionString);
+  // node-postgres expresses channel binding as an option rather than a URL parameter.
+  const channelBinding = url.searchParams.get('channel_binding') === 'require';
+  url.searchParams.delete('channel_binding');
+  // node-postgres already treats prefer/require/verify-ca as verify-full; say so explicitly
+  // (keeps certificate verification and silences its deprecation warning).
+  if (['prefer', 'require', 'verify-ca'].includes(url.searchParams.get('sslmode') ?? '')) url.searchParams.set('sslmode', 'verify-full');
+  const pool = new pg.Pool({
+    connectionString: url.toString(),
+    max: Number(process.env.DATABASE_POOL_MAX ?? 5),
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 15_000,
+    enableChannelBinding: channelBinding,
+  });
+  // Serverless Postgres (e.g. Neon) closes idle connections when it suspends; never crash on that.
+  pool.on('error', (err) => console.error('[somm] idle database connection closed:', err.message));
+  const wrap = (q: { query: (text: string, values?: unknown[]) => Promise<pg.QueryResult> }): Queryable => ({
+    async query(text, values) {
+      const r = await q.query(text, values);
+      return { rows: r.rows, rowCount: r.rowCount ?? 0 };
+    },
+    async exec(sql) {
+      await q.query(sql);
+    },
+  });
+  const base = wrap(pool);
+  return {
+    kind: 'pg',
+    ...base,
+    async transaction(fn) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await fn(wrap(client));
+        await client.query('COMMIT');
+        return result;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+    close: () => pool.end(),
+  };
+}
+
+// ------------------------------------------------------------------ helpers
+
+const txContext = new AsyncLocalStorage<Queryable>();
+const converted = new Map<string, { text: string; names: string[] | null }>();
+
+/** Rewrite `?` (positional) or `:name` (named) placeholders to `$n`. `::casts` are left alone. */
+function convert(sql: string, named: boolean): { text: string; names: string[] | null } {
+  const key = `${named ? 'n' : 'p'}${sql}`;
+  const hit = converted.get(key);
+  if (hit) return hit;
+  let result: { text: string; names: string[] | null };
+  if (named) {
+    const names: string[] = [];
+    const text = sql.replace(/(?<![:\w]):([A-Za-z_]\w*)/g, (_m, name: string) => {
+      let i = names.indexOf(name);
+      if (i < 0) {
+        names.push(name);
+        i = names.length - 1;
+      }
+      return `$${i + 1}`;
+    });
+    result = { text, names };
+  } else {
+    let i = 0;
+    result = { text: sql.replace(/\?/g, () => `$${++i}`), names: null };
   }
-  return stmt;
+  converted.set(key, result);
+  return result;
 }
 
-function bind(params: Params | undefined): SQLInputValue[] | [Record<string, SQLInputValue>] {
-  if (params === undefined) return [];
-  return Array.isArray(params) ? params : [params];
-}
-
-export function all<T>(db: DB, sql: string, params?: Params): T[] {
-  return statement(db, sql).all(...(bind(params) as SQLInputValue[])) as T[];
-}
-
-export function get<T>(db: DB, sql: string, params?: Params): T | undefined {
-  return (statement(db, sql).get(...(bind(params) as SQLInputValue[])) as T | undefined) ?? undefined;
-}
-
-export function run(db: DB, sql: string, params?: Params): { changes: number; lastInsertRowid: number } {
-  const r = statement(db, sql).run(...(bind(params) as SQLInputValue[]));
-  return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) };
-}
-
-const depth = new WeakMap<DB, number>();
-
-/** Run `fn` in a transaction; nested calls use savepoints. */
-export function tx<T>(db: DB, fn: () => T): T {
-  const d = depth.get(db) ?? 0;
-  const name = `sp${d}`;
-  db.exec(d === 0 ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${name}`);
-  depth.set(db, d + 1);
-  try {
-    const result = fn();
-    db.exec(d === 0 ? 'COMMIT' : `RELEASE ${name}`);
-    return result;
-  } catch (err) {
-    db.exec(d === 0 ? 'ROLLBACK' : `ROLLBACK TO ${name}; RELEASE ${name}`);
-    throw err;
-  } finally {
-    depth.set(db, d);
+function bind(sql: string, params: Params | undefined): { text: string; values: unknown[] } {
+  if (params === undefined || Array.isArray(params)) {
+    const { text } = convert(sql, false);
+    return { text, values: (params ?? []).map((v) => (v === undefined ? null : v)) };
   }
+  const { text, names } = convert(sql, true);
+  return { text, values: names!.map((n) => (params[n] === undefined ? null : params[n])) };
+}
+
+function target(db: DB): Queryable {
+  return txContext.getStore() ?? db;
+}
+
+export async function all<T>(db: DB, sql: string, params?: Params): Promise<T[]> {
+  const { text, values } = bind(sql, params);
+  return (await target(db).query(text, values)).rows as T[];
+}
+
+export async function get<T>(db: DB, sql: string, params?: Params): Promise<T | undefined> {
+  return (await all<T>(db, sql, params))[0];
+}
+
+export async function run(db: DB, sql: string, params?: Params): Promise<{ changes: number }> {
+  const { text, values } = bind(sql, params);
+  return { changes: (await target(db).query(text, values)).rowCount };
+}
+
+/** Run `fn` in a transaction. Nested calls join the outer transaction. */
+export async function tx<T>(db: DB, fn: () => Promise<T>): Promise<T> {
+  if (txContext.getStore()) return fn();
+  return db.transaction((q) => txContext.run(q, fn));
 }
 
 export function newId(bytes = 12): string {
@@ -74,6 +190,8 @@ export function nowIso(offsetMs = 0): string {
   return new Date(Date.now() + offsetMs).toISOString();
 }
 
+// --------------------------------------------------------------- migrations
+
 function migrationsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // Source layout: src/server/db/migrations. Bundled layout: dist/server/migrations.
@@ -83,9 +201,8 @@ function migrationsDir(): string {
   throw new Error(`Migrations directory not found next to ${here}`);
 }
 
-export function migrate(db: DB): number[] {
-  db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
-  const applied = new Set(all<{ version: number }>(db, 'SELECT version FROM schema_migrations').map((r) => r.version));
+export async function migrate(db: DB): Promise<number[]> {
+  await db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)');
   const dir = migrationsDir();
   const files = readdirSync(dir)
     .filter((f) => /^\d+_.+\.sql$/.test(f))
@@ -93,26 +210,52 @@ export function migrate(db: DB): number[] {
   const ran: number[] = [];
   for (const file of files) {
     const version = Number(file.split('_')[0]);
-    if (applied.has(version)) continue;
     const sql = readFileSync(join(dir, file), 'utf8');
-    tx(db, () => {
-      db.exec(sql);
-      run(db, 'INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)', [version, nowIso()]);
+    const applied = await db.transaction(async (q) => {
+      // Serialise concurrent starts (e.g. two instances booting at once).
+      await q.query('SELECT pg_advisory_xact_lock(5766000)', []);
+      const done = await q.query('SELECT 1 FROM schema_migrations WHERE version = $1', [version]);
+      if (done.rows.length) return false;
+      await q.exec(sql);
+      await q.query('INSERT INTO schema_migrations (version, applied_at) VALUES ($1, $2)', [version, nowIso()]);
+      return true;
     });
-    ran.push(version);
+    if (applied) ran.push(version);
   }
   return ran;
 }
 
-export function openDatabase(path: string, options: { migrate?: boolean } = {}): DB {
-  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
-  const db = new DatabaseSync(path);
-  db.exec('PRAGMA foreign_keys = ON');
-  db.exec('PRAGMA busy_timeout = 5000');
-  if (path !== ':memory:') {
-    db.exec('PRAGMA journal_mode = WAL');
-    db.exec('PRAGMA synchronous = NORMAL');
-  }
-  if (options.migrate !== false) migrate(db);
+export interface OpenOptions {
+  /** postgres:// URL → node-postgres; otherwise PGlite. */
+  url?: string | null;
+  /** PGlite data directory; null or "memory://" for an in-memory database. */
+  dataDir?: string | null;
+  migrate?: boolean;
+  /** PGlite only: start from a `dumpDataDir()` snapshot instead of running initdb (tests). */
+  snapshot?: Blob;
+}
+
+export async function openDatabase(options: OpenOptions = {}): Promise<DB> {
+  const url = options.url?.trim();
+  const db =
+    url && /^postgres(ql)?:\/\//.test(url)
+      ? await openPg(url)
+      : await openPglite(!options.dataDir || options.dataDir === 'memory://' ? null : options.dataDir, options.snapshot);
+  if (options.migrate !== false) await migrate(db);
   return db;
+}
+
+/** Empty every application table (tests). */
+/** PGlite only: a tarball of the data directory, restorable with `snapshot`. */
+export async function dumpDatabase(db: DB): Promise<Blob> {
+  if (!db.dump) throw new Error('Only PGlite databases can be dumped.');
+  return db.dump();
+}
+
+export async function resetDatabase(db: DB): Promise<void> {
+  const tables = await all<{ tablename: string }>(
+    db,
+    "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_migrations'",
+  );
+  if (tables.length) await db.exec(`TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`);
 }

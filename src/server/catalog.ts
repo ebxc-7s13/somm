@@ -30,81 +30,88 @@ interface TrackRow {
   explicit: number | null;
 }
 
-export function ensureArtist(db: DB, name: string, externalId?: { namespace: string; value: string }): string {
+export async function ensureArtist(db: DB, name: string, externalId?: { namespace: string; value: string }): Promise<string> {
   const clean = cleanDisplayText(name, 200);
   if (externalId) {
-    const hit = get<{ entity_id: string }>(db, "SELECT entity_id FROM external_ids WHERE namespace = ? AND value = ? AND entity_type = 'artist'", [externalId.namespace, externalId.value]);
+    const hit = await get<{ entity_id: string }>(db, "SELECT entity_id FROM external_ids WHERE namespace = ? AND value = ? AND entity_type = 'artist'", [externalId.namespace, externalId.value]);
     if (hit) return hit.entity_id;
   }
   const normalized = normalizeText(clean);
   // Without an external ID, artists are identified by normalised name. Two
   // different artists with the same name will share a record; documented limitation.
-  const existing = get<{ id: string }>(db, 'SELECT id FROM artists WHERE normalized_name = ? ORDER BY created_at LIMIT 1', [normalized]);
+  const existing = await get<{ id: string }>(db, 'SELECT id FROM artists WHERE normalized_name = ? ORDER BY created_at LIMIT 1', [normalized]);
   const id = existing?.id ?? newId();
-  if (!existing) run(db, 'INSERT INTO artists (id, name, normalized_name, created_at) VALUES (?, ?, ?, ?)', [id, clean, normalized, nowIso()]);
+  if (!existing) await run(db, 'INSERT INTO artists (id, name, normalized_name, created_at) VALUES (?, ?, ?, ?)', [id, clean, normalized, nowIso()]);
   if (externalId) {
-    run(db, "INSERT OR IGNORE INTO external_ids (namespace, value, entity_type, entity_id, created_at) VALUES (?, ?, 'artist', ?, ?)", [externalId.namespace, externalId.value, id, nowIso()]);
+    await run(db, "INSERT INTO external_ids (namespace, value, entity_type, entity_id, created_at) VALUES (?, ?, 'artist', ?, ?) ON CONFLICT DO NOTHING", [
+      externalId.namespace, externalId.value, id, nowIso(),
+    ]);
   }
   return id;
 }
 
-export function ensureAlbum(db: DB, title: string, primaryArtistId: string, releaseDate: string | null, artworkUrl: string | null): string {
+export async function ensureAlbum(db: DB, title: string, primaryArtistId: string, releaseDate: string | null, artworkUrl: string | null): Promise<string> {
   const clean = cleanDisplayText(title, 200);
   const normalized = normalizeText(clean);
-  const existing = get<{ id: string; release_date: string | null; artwork_url: string | null }>(
+  const existing = await get<{ id: string; release_date: string | null; artwork_url: string | null }>(
     db,
     'SELECT id, release_date, artwork_url FROM albums WHERE normalized_title = ? AND primary_artist_id = ? LIMIT 1',
     [normalized, primaryArtistId],
   );
   if (existing) {
     if ((!existing.release_date && releaseDate) || (!existing.artwork_url && artworkUrl)) {
-      run(db, 'UPDATE albums SET release_date = COALESCE(release_date, ?), artwork_url = COALESCE(artwork_url, ?) WHERE id = ?', [releaseDate, artworkUrl, existing.id]);
+      await run(db, 'UPDATE albums SET release_date = COALESCE(release_date, ?), artwork_url = COALESCE(artwork_url, ?) WHERE id = ?', [releaseDate, artworkUrl, existing.id]);
     }
     return existing.id;
   }
   const id = newId();
-  run(db, 'INSERT INTO albums (id, title, normalized_title, primary_artist_id, release_date, artwork_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+  await run(db, 'INSERT INTO albums (id, title, normalized_title, primary_artist_id, release_date, artwork_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [
     id, clean, normalized, primaryArtistId, releaseDate, artworkUrl, nowIso(),
   ]);
   return id;
 }
 
-export function ensureGenre(db: DB, raw: string): { id: number; name: string; family: string } | null {
+export async function ensureGenre(db: DB, raw: string): Promise<{ id: number; name: string; family: string } | null> {
   const name = canonicalGenre(raw);
   if (!name) return null;
-  const existing = get<{ id: number; family: string }>(db, 'SELECT id, family FROM genres WHERE name = ?', [name]);
+  const existing = await get<{ id: number; family: string }>(db, 'SELECT id, family FROM genres WHERE name = ?', [name]);
   if (existing) return { id: existing.id, name, family: existing.family };
   const family = genreFamily(name);
-  const r = run(db, 'INSERT INTO genres (name, family) VALUES (?, ?)', [name, family]);
-  return { id: r.lastInsertRowid, name, family };
+  const row = await get<{ id: number; family: string }>(
+    db,
+    'INSERT INTO genres (name, family) VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET name = excluded.name RETURNING id, family',
+    [name, family],
+  );
+  return { id: row!.id, name, family: row!.family };
 }
 
-export function addTrackGenre(db: DB, trackId: string, raw: string, source: string, kind: Exclude<MetadataKind, 'user'>, confidence: number) {
-  const g = ensureGenre(db, raw);
+export async function addTrackGenre(db: DB, trackId: string, raw: string, source: string, kind: Exclude<MetadataKind, 'user'>, confidence: number) {
+  const g = await ensureGenre(db, raw);
   if (!g) return;
-  run(
+  await run(
     db,
     `INSERT INTO track_genres (track_id, genre_id, source, kind, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (track_id, genre_id, source) DO UPDATE SET confidence = MAX(confidence, excluded.confidence)`,
+     ON CONFLICT (track_id, genre_id, source) DO UPDATE SET confidence = GREATEST(track_genres.confidence, excluded.confidence)`,
     [trackId, g.id, source, kind, Math.round(confidence * 1000) / 1000, nowIso()],
   );
 }
 
-export function addTrackAttribute(
+export async function addTrackAttribute(
   db: DB,
   trackId: string,
   a: { category: AttributeCategory; value: string; source: string; kind: Exclude<MetadataKind, 'user'>; confidence: number; evidence?: string },
 ) {
-  run(
+  await run(
     db,
     `INSERT INTO track_attributes (track_id, category, value, source, kind, confidence, evidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (track_id, category, value, source) DO UPDATE SET confidence = MAX(confidence, excluded.confidence), evidence = COALESCE(excluded.evidence, evidence)`,
+     ON CONFLICT (track_id, category, value, source) DO UPDATE SET confidence = GREATEST(track_attributes.confidence, excluded.confidence),
+       evidence = COALESCE(excluded.evidence, track_attributes.evidence)`,
     [trackId, a.category, a.value.slice(0, 60), a.source, a.kind, Math.round(a.confidence * 1000) / 1000, a.evidence?.slice(0, 200) ?? null, nowIso()],
   );
 }
 
-export function addExternalId(db: DB, entityType: 'track' | 'artist' | 'album', entityId: string, namespace: string, value: string, url?: string | null) {
-  run(db, 'INSERT OR IGNORE INTO external_ids (namespace, value, entity_type, entity_id, url, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+export async function addExternalId(db: DB, entityType: 'track' | 'artist' | 'album', entityId: string, namespace: string, value: string, url?: string | null) {
+  await run(db, 'INSERT INTO external_ids (namespace, value, entity_type, entity_id, url, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING', [
     namespace, value, entityType, entityId, url ?? null, nowIso(),
   ]);
 }
@@ -140,27 +147,26 @@ function compatible(row: TrackRow, entry: RawEntry): boolean {
 }
 
 /** Find an existing canonical track for an entry without creating anything. */
-export function findExistingTrack(db: DB, entry: RawEntry): { trackId: string; method: MatchMethod } | null {
+export async function findExistingTrack(db: DB, entry: RawEntry): Promise<{ trackId: string; method: MatchMethod } | null> {
   for (const pid of entry.providerIds ?? []) {
-    const hit = get<{ entity_id: string }>(db, "SELECT entity_id FROM external_ids WHERE namespace = ? AND value = ? AND entity_type = 'track'", [pid.namespace, pid.value]);
+    const hit = await get<{ entity_id: string }>(db, "SELECT entity_id FROM external_ids WHERE namespace = ? AND value = ? AND entity_type = 'track'", [pid.namespace, pid.value]);
     if (hit) return { trackId: hit.entity_id, method: 'provider_id' };
   }
+  const key = entryFallbackKey(entry);
   if (entry.isrc) {
-    const key = entryFallbackKey(entry);
-    const rows = all<{ id: string; fallback_key: string }>(db, 'SELECT id, fallback_key FROM tracks WHERE isrc = ? ORDER BY created_at', [entry.isrc]);
+    const rows = await all<{ id: string; fallback_key: string }>(db, 'SELECT id, fallback_key FROM tracks WHERE isrc = ? ORDER BY created_at', [entry.isrc]);
     const best = rows.find((r) => r.fallback_key === key) ?? rows[0];
     if (best) return { trackId: best.id, method: 'isrc' };
   }
-  const key = entryFallbackKey(entry);
-  const candidates = all<TrackRow>(db, 'SELECT id, duration_ms, isrc, album_id, release_date, release_year, explicit FROM tracks WHERE fallback_key = ? ORDER BY created_at', [key]);
+  const candidates = await all<TrackRow>(db, 'SELECT id, duration_ms, isrc, album_id, release_date, release_year, explicit FROM tracks WHERE fallback_key = ? ORDER BY created_at', [key]);
   const match = candidates.find((c) => compatible(c, entry));
   return match ? { trackId: match.id, method: 'title_artist' } : null;
 }
 
 /** Resolve an entry to a canonical track, creating it when needed, and merge any new facts. */
-export function resolveTrack(db: DB, entry: RawEntry): { trackId: string; method: MatchMethod } {
+export async function resolveTrack(db: DB, entry: RawEntry): Promise<{ trackId: string; method: MatchMethod }> {
   const { names, base, version, versionDetail } = entryArtists(entry);
-  const existing = findExistingTrack(db, entry);
+  const existing = await findExistingTrack(db, entry);
   const now = nowIso();
   let trackId: string;
   let method: MatchMethod;
@@ -169,13 +175,14 @@ export function resolveTrack(db: DB, entry: RawEntry): { trackId: string; method
     trackId = existing.trackId;
     method = existing.method;
     // Non-destructive merge: only fill fields that are still unknown.
-    const row = get<TrackRow>(db, 'SELECT id, duration_ms, isrc, album_id, release_date, release_year, explicit FROM tracks WHERE id = ?', [trackId])!;
+    const row = (await get<TrackRow & { primary_artist_id: string }>(
+      db,
+      'SELECT id, duration_ms, isrc, album_id, release_date, release_year, explicit, primary_artist_id FROM tracks WHERE id = ?',
+      [trackId],
+    ))!;
     let albumId = row.album_id;
-    if (!albumId && entry.album) {
-      const primary = get<{ primary_artist_id: string }>(db, 'SELECT primary_artist_id FROM tracks WHERE id = ?', [trackId])!.primary_artist_id;
-      albumId = ensureAlbum(db, entry.album, primary, entry.releaseDate ?? null, entry.artworkUrl ?? null);
-    }
-    run(
+    if (!albumId && entry.album) albumId = await ensureAlbum(db, entry.album, row.primary_artist_id, entry.releaseDate ?? null, entry.artworkUrl ?? null);
+    await run(
       db,
       `UPDATE tracks SET duration_ms = COALESCE(duration_ms, ?), isrc = COALESCE(isrc, ?), album_id = COALESCE(album_id, ?),
          release_date = COALESCE(release_date, ?), release_year = COALESCE(release_year, ?), explicit = COALESCE(explicit, ?), updated_at = ?
@@ -185,10 +192,13 @@ export function resolveTrack(db: DB, entry: RawEntry): { trackId: string; method
   } else {
     method = 'new';
     trackId = newId();
-    const artistIds = names.map((n, i) => ensureArtist(db, n, i < (entry.artistIds?.length ?? 0) ? entry.artistIds![i] : undefined));
+    const artistIds: string[] = [];
+    for (let i = 0; i < names.length; i++) {
+      artistIds.push(await ensureArtist(db, names[i]!, i < (entry.artistIds?.length ?? 0) ? entry.artistIds![i] : undefined));
+    }
     const primary = artistIds[0]!;
-    const albumId = entry.album ? ensureAlbum(db, entry.album, primary, entry.releaseDate ?? null, entry.artworkUrl ?? null) : null;
-    run(
+    const albumId = entry.album ? await ensureAlbum(db, entry.album, primary, entry.releaseDate ?? null, entry.artworkUrl ?? null) : null;
+    await run(
       db,
       `INSERT INTO tracks (id, title, display_title, normalized_title, version, version_detail, primary_artist_id, album_id, duration_ms,
          release_date, release_year, isrc, explicit, fallback_key, enrichment_status, created_at, updated_at)
@@ -200,20 +210,21 @@ export function resolveTrack(db: DB, entry: RawEntry): { trackId: string; method
       ],
     );
     const seen = new Set<string>();
-    artistIds.forEach((aid, i) => {
-      if (seen.has(aid)) return;
+    for (let i = 0; i < artistIds.length; i++) {
+      const aid = artistIds[i]!;
+      if (seen.has(aid)) continue;
       seen.add(aid);
-      run(db, 'INSERT INTO track_artists (track_id, artist_id, role, position) VALUES (?, ?, ?, ?)', [trackId, aid, i === 0 ? 'primary' : 'featured', i]);
-    });
+      await run(db, 'INSERT INTO track_artists (track_id, artist_id, role, position) VALUES (?, ?, ?, ?)', [trackId, aid, i === 0 ? 'primary' : 'featured', i]);
+    }
   }
 
-  for (const pid of entry.providerIds ?? []) addExternalId(db, 'track', trackId, pid.namespace, pid.value, pid.url);
-  if (entry.isrc) addExternalId(db, 'track', trackId, 'isrc', entry.isrc);
+  for (const pid of entry.providerIds ?? []) await addExternalId(db, 'track', trackId, pid.namespace, pid.value, pid.url);
+  if (entry.isrc) await addExternalId(db, 'track', trackId, 'isrc', entry.isrc);
   if (entry.genreKind === 'provider' && entry.genres?.length) {
     const source = entry.genreSource ?? 'provider';
     // Spotify genres are artist-level, so they get lower confidence than per-track catalogue genres.
     const confidence = source.startsWith('spotify') ? 0.6 : 0.75;
-    for (const g of entry.genres) addTrackGenre(db, trackId, g, source, 'provided', confidence);
+    for (const g of entry.genres) await addTrackGenre(db, trackId, g, source, 'provided', confidence);
   }
   return { trackId, method };
 }
@@ -237,16 +248,19 @@ export interface PreviewEntry {
  * alternate versions, tracks already in the user's library and low-confidence parses.
  * Read-only — nothing is created.
  */
-export function classifyEntries(db: DB, userId: string, entries: RawEntry[]): PreviewEntry[] {
+export async function classifyEntries(db: DB, userId: string, entries: RawEntry[]): Promise<PreviewEntry[]> {
   const byProvider = new Map<string, number>();
   const byIsrc = new Map<string, number>();
   const byKey = new Map<string, { row: number; durationMs: number | null; isrc: string | null }[]>();
   const byBase = new Map<string, { row: number; version: string | null }[]>();
   const libraryTracks = new Set(
-    all<{ track_id: string }>(db, 'SELECT DISTINCT pt.track_id FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id WHERE p.user_id = ?', [userId]).map((r) => r.track_id),
+    (await all<{ track_id: string }>(db, 'SELECT DISTINCT pt.track_id FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id WHERE p.user_id = ?', [userId])).map(
+      (r) => r.track_id,
+    ),
   );
 
-  return entries.map((entry) => {
+  const out: PreviewEntry[] = [];
+  for (const entry of entries) {
     const { names, base, version } = entryArtists(entry);
     const notes: string[] = [...(entry.warnings ?? [])];
     let duplicateOf: number | null = null;
@@ -288,7 +302,7 @@ export function classifyEntries(db: DB, userId: string, entries: RawEntry[]): Pr
       status = 'duplicate';
       notes.push(`Duplicate of row ${duplicateOf}.`);
     } else {
-      const existing = findExistingTrack(db, entry);
+      const existing = await findExistingTrack(db, entry);
       if (existing && libraryTracks.has(existing.trackId)) {
         status = 'in_library';
         notes.push('Already in your library — it will also be added to this playlist.');
@@ -299,7 +313,7 @@ export function classifyEntries(db: DB, userId: string, entries: RawEntry[]): Pr
         status = 'review';
       }
     }
-    return {
+    out.push({
       row: entry.row,
       title: entry.title,
       artists: names,
@@ -309,6 +323,7 @@ export function classifyEntries(db: DB, userId: string, entries: RawEntry[]): Pr
       duplicateOf,
       notes,
       skipByDefault: status === 'duplicate',
-    };
-  });
+    });
+  }
+  return out;
 }

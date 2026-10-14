@@ -9,9 +9,9 @@ import { serve } from '@hono/node-server';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp, createAppContext } from '../../src/server/app';
-import { openDatabase } from '../../src/server/db';
+import { get } from '../../src/server/db';
 import { attachWebSocket } from '../../src/server/realtime/ws';
-import { electronicCsv, testConfig } from '../helpers/server';
+import { electronicCsv, testConfig, testDatabase } from '../helpers/server';
 
 interface Running {
   base: string;
@@ -26,7 +26,7 @@ afterEach(async () => {
 
 async function start(env: Record<string, string> = {}, ringTimeoutMs?: number) {
   const config = testConfig({ PUBLIC_URL: 'http://127.0.0.1:5173', ...env });
-  const ctx = createAppContext(config, { db: openDatabase(':memory:'), musicbrainz: null, ringTimeoutMs });
+  const ctx = await createAppContext(config, { db: await testDatabase(), musicbrainz: null, ringTimeoutMs });
   const app = createApp(ctx);
   const server = await new Promise<Server>((resolve) => {
     const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s as Server)) as Server;
@@ -36,12 +36,11 @@ async function start(env: Record<string, string> = {}, ringTimeoutMs?: number) {
   const r: Running = {
     base: `http://127.0.0.1:${port}`,
     wsUrl: `ws://127.0.0.1:${port}/ws`,
-    close: () =>
-      new Promise<void>((resolve) => {
-        ctx.hub.closeAll();
-        wss.close();
-        server.close(() => resolve());
-      }),
+    close: async () => {
+      await ctx.hub.closeAll();
+      wss.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
   };
   running.push(r);
   return { ...r, ctx };
@@ -237,7 +236,8 @@ describe('call signalling', () => {
     expect((await wa.next((m) => m.type === 'error')).code).toBe('bad_signal');
     wa.send({ type: 'call:end', callId: ringing.callId });
     expect((await wb.next((m) => m.type === 'call:ended')).reason).toBe('caller_hung_up');
-    const row = srv.ctx.db.prepare('SELECT status, answered_at FROM calls WHERE id = ?').get(ringing.callId) as { status: string; answered_at: string };
+    await srv.ctx.hub.idle();
+    const row =(await get<{ status: string; answered_at: string }>(srv.ctx.db, 'SELECT status, answered_at FROM calls WHERE id = ?', [ringing.callId]))!;
     expect(row.status).toBe('ended');
     expect(row.answered_at).toBeTruthy();
     wa.close();

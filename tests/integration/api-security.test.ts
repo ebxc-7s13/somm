@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { get, run } from '../../src/server/db';
 import { ORIGIN, createTestServer, csv, electronicCsv } from '../helpers/server';
 
 describe('accounts', () => {
   it('signs up, signs in and out with pseudonymous handles only', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     const signup = await a.post('/api/auth/signup', { handle: 'Nova_Fan', password: 'correct-horse-battery' });
     expect(signup.status).toBe(201);
@@ -20,7 +21,7 @@ describe('accounts', () => {
   });
 
   it('validates handles and passwords', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     expect((await a.post('/api/auth/signup', { handle: 'ab', password: 'correct-horse-battery' })).body.error.code).toBe('invalid_handle');
     expect((await a.post('/api/auth/signup', { handle: 'admin', password: 'correct-horse-battery' })).body.error.code).toBe('reserved_handle');
@@ -32,19 +33,19 @@ describe('accounts', () => {
   });
 
   it('offers an explicit, expiring demo mode', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     const r = await a.post('/api/auth/demo');
     expect(r.status).toBe(201);
     expect(r.body.user.handle).toMatch(/^demo-[0-9a-f]{6}$/);
     expect(r.body.user.isDemo).toBe(1);
     expect(new Date(r.body.user.expiresAt).getTime()).toBeGreaterThan(Date.now());
-    const off = createTestServer({ env: { DEMO_MODE_ENABLED: 'false' } });
+    const off = await createTestServer({ env: { DEMO_MODE_ENABLED: 'false' } });
     expect((await off.client().post('/api/auth/demo')).status).toBe(403);
   });
 
   it('rate-limits sign-in attempts', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     let last = 0;
     for (let i = 0; i < 12; i++) last = (await a.post('/api/auth/signin', { handle: 'nobody', password: 'wrong-password-1' })).status;
@@ -54,7 +55,7 @@ describe('accounts', () => {
 
 describe('CSRF and input hardening', () => {
   it('rejects cross-origin and non-JSON state changes', async () => {
-    const { app } = createTestServer();
+    const { app } = await createTestServer();
     const cross = await app.request('/api/auth/demo', { method: 'POST', headers: { Origin: 'https://evil.example' } });
     expect(cross.status).toBe(403);
     const form = await app.request('/api/auth/signup', {
@@ -72,7 +73,7 @@ describe('CSRF and input hardening', () => {
   });
 
   it('sets security headers', async () => {
-    const { app } = createTestServer();
+    const { app } = await createTestServer();
     const r = await app.request('/api/health');
     expect(r.headers.get('content-security-policy')).toContain("default-src 'self'");
     expect(r.headers.get('x-content-type-options')).toBe('nosniff');
@@ -82,7 +83,7 @@ describe('CSRF and input hardening', () => {
 
 describe('cross-user data isolation', () => {
   async function twoUsers() {
-    const server = createTestServer();
+    const server = await createTestServer();
     const a = server.client();
     const b = server.client();
     await a.signup('alice-listener');
@@ -121,7 +122,7 @@ describe('cross-user data isolation', () => {
     expect(profile.visible).toBe(true);
     expect(profile.profile.totals.tracks).toBe(0);
     expect(profile.playlists).toEqual([]);
-    const shared = ctx.db.prepare("SELECT track_count FROM music_profiles WHERE user_id = ? AND scope = 'shared'").get(a.user!.id) as { track_count: number };
+    const shared = (await get<{ track_count: number }>(ctx.db, "SELECT track_count FROM music_profiles WHERE user_id = ? AND scope = 'shared'", [a.user!.id]))!;
     expect(shared.track_count).toBe(0);
     await b.importCsv(electronicCsv('Bruno', 10));
     const compare = await b.get('/api/compare/alice-listener');
@@ -180,7 +181,7 @@ describe('cross-user data isolation', () => {
 
 describe('data control and deletion', () => {
   it('deletes imported music data on request and prunes the catalogue', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const a = client();
     await a.signup('deleter');
     await a.importCsv(electronicCsv('Gone', 6));
@@ -189,12 +190,12 @@ describe('data control and deletion', () => {
     expect(r.body.playlistsDeleted).toBe(1);
     expect((await a.get('/api/library/tracks')).body.total).toBe(0);
     expect((await a.get('/api/profile')).body.profile.totals.tracks).toBe(0);
-    expect((ctx.db.prepare('SELECT COUNT(*) AS n FROM tracks').get() as { n: number }).n).toBe(0);
-    expect((ctx.db.prepare('SELECT COUNT(*) AS n FROM artists').get() as { n: number }).n).toBe(0);
+    expect((await get<{ n: number }>(ctx.db, 'SELECT COUNT(*) AS n FROM tracks'))!.n).toBe(0);
+    expect((await get<{ n: number }>(ctx.db, 'SELECT COUNT(*) AS n FROM artists'))!.n).toBe(0);
   });
 
   it('deletes the account and everything it owns after explicit confirmation', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const a = client();
     const user = await a.signup('leaving-soon');
     await a.importCsv(electronicCsv('Bye', 4));
@@ -202,18 +203,18 @@ describe('data control and deletion', () => {
     expect((await a.del('/api/me', { confirmHandle: 'leaving-soon' })).status).toBe(200);
     expect((await a.get('/api/me')).status).toBe(401);
     for (const table of ['users', 'sessions', 'playlists', 'music_profiles', 'profile_artists', 'import_jobs']) {
-      const n = (ctx.db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${table === 'users' ? 'id' : 'user_id'} = ?`).get(user.id) as { n: number }).n;
+      const n = (await get<{ n: number }>(ctx.db, `SELECT COUNT(*) AS n FROM ${table} WHERE ${table === 'users' ? 'id' : 'user_id'} = ?`, [user.id]))!.n;
       expect(n, table).toBe(0);
     }
-    expect((ctx.db.prepare('SELECT COUNT(*) AS n FROM tracks').get() as { n: number }).n).toBe(0);
+    expect((await get<{ n: number }>(ctx.db, 'SELECT COUNT(*) AS n FROM tracks'))!.n).toBe(0);
   });
 
   it('exports the user’s data without secrets', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const a = client();
     const user = await a.signup('exporter');
     await a.importCsv(csv([['Glass Orbit', 'Nova Lattice']]));
-    ctx.providers.storeTokens(user.id, 'spotify', 'secret-access-token-value', 'secret-refresh-token-value', null, 'playlist-read-private');
+    await ctx.providers.storeTokens(user.id, 'spotify', 'secret-access-token-value', 'secret-refresh-token-value', null, 'playlist-read-private');
     const r = await a.get('/api/me/export');
     expect(r.headers.get('content-disposition')).toContain('somm-export-exporter.json');
     const text = JSON.stringify(r.body);
@@ -226,11 +227,11 @@ describe('data control and deletion', () => {
   });
 
   it('stores provider tokens encrypted and never returns them', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const a = client();
     const user = await a.signup('token-owner');
-    ctx.providers.storeTokens(user.id, 'spotify', 'plain-access-token', null, null, null);
-    const row = ctx.db.prepare('SELECT access_token_enc FROM provider_connections WHERE user_id = ?').get(user.id) as { access_token_enc: string };
+    await ctx.providers.storeTokens(user.id, 'spotify', 'plain-access-token', null, null, null);
+    const row = (await get<{ access_token_enc: string }>(ctx.db, 'SELECT access_token_enc FROM provider_connections WHERE user_id = ?', [user.id]))!;
     expect(row.access_token_enc).not.toContain('plain-access-token');
     expect(row.access_token_enc.startsWith('v1.')).toBe(true);
     const providers = await a.get('/api/providers');
@@ -240,27 +241,27 @@ describe('data control and deletion', () => {
   });
 
   it('expires demo accounts and YouTube-derived data in housekeeping', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const { housekeeping } = await import('../../src/server/services/accounts');
     const a = client();
     const demo = (await a.post('/api/auth/demo')).body.user;
     await a.importCsv(csv([['Glass Orbit', 'Nova Lattice']]));
-    ctx.db.prepare('UPDATE users SET expires_at = ? WHERE id = ?').run('2000-01-01T00:00:00.000Z', demo.id);
+    await run(ctx.db, 'UPDATE users SET expires_at = ? WHERE id = ?', ['2000-01-01T00:00:00.000Z', demo.id]);
     const b = client();
     await b.signup('yt-user');
     await b.importCsv(csv([['Echo', 'Mira Sol']]));
-    ctx.db.prepare("UPDATE playlists SET data_expires_at = '2000-01-01T00:00:00.000Z' WHERE user_id = ?").run(b.user!.id);
-    const r = housekeeping(ctx.db);
+    await run(ctx.db, "UPDATE playlists SET data_expires_at = '2000-01-01T00:00:00.000Z' WHERE user_id = ?", [b.user!.id]);
+    const r = await housekeeping(ctx.db);
     expect(r.demoAccounts).toBe(1);
     expect(r.expiredPlaylists).toEqual([b.user!.id]);
-    expect(ctx.db.prepare('SELECT 1 FROM users WHERE id = ?').get(demo.id)).toBeUndefined();
+    expect(await get(ctx.db, 'SELECT 1 FROM users WHERE id = ?', [demo.id])).toBeUndefined();
     expect((await b.get('/api/playlists')).body.playlists).toEqual([]);
   });
 });
 
 describe('library browsing', () => {
   it('searches, filters, sorts and paginates', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const a = client();
     await a.signup('browser');
     await a.importCsv(
@@ -296,7 +297,7 @@ describe('library browsing', () => {
   });
 
   it('filters by inferred attributes via their source genres', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     await a.signup('attr-filter');
     await a.importCsv(csv([['Glass Orbit', 'Nova Lattice', '', 'synthwave'], ['Quiet Engine', 'Teo Vance', '', 'hard bop']]));
@@ -305,7 +306,7 @@ describe('library browsing', () => {
   });
 
   it('regenerates the map after importing more music', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     await a.signup('mapper');
     await a.importCsv(csv([['Glass Orbit', 'Nova Lattice', '', 'synthwave']]));

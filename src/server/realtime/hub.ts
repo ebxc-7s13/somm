@@ -28,6 +28,8 @@ interface Conn {
   socket: SocketLike;
   rooms: Set<string>;
   frames: number[];
+  /** Frames from one connection are processed in order, one at a time. */
+  chain: Promise<void>;
 }
 
 interface ActiveCall {
@@ -38,6 +40,8 @@ interface ActiveCall {
   media: 'audio' | 'video';
   status: 'ringing' | 'active';
   timer: NodeJS.Timeout | null;
+  /** Serialised database writes for this call (insert before updates). */
+  log: Promise<void>;
 }
 
 export const CALL_RING_TIMEOUT_MS = 45_000;
@@ -49,6 +53,7 @@ export class RealtimeHub {
   private byUser = new Map<string, Set<string>>();
   private calls = new Map<string, ActiveCall>();
   private limiter = new SlidingWindowLimiter();
+  private pending = new Set<Promise<unknown>>();
 
   constructor(
     private readonly db: DB,
@@ -58,7 +63,7 @@ export class RealtimeHub {
 
   connect(userId: string, socket: SocketLike): string {
     const id = newId(8);
-    this.conns.set(id, { id, userId, socket, rooms: new Set(), frames: [] });
+    this.conns.set(id, { id, userId, socket, rooms: new Set(), frames: [], chain: Promise.resolve() });
     if (!this.byUser.has(userId)) this.byUser.set(userId, new Set());
     this.byUser.get(userId)!.add(id);
     this.send(id, { type: 'hello', userId, calls: this.callConfig() });
@@ -109,15 +114,50 @@ export class RealtimeHub {
     this.send(connId, { type: 'error', code, message, ref });
   }
 
-  /** Handle one inbound frame from a client. */
-  handle(connId: string, raw: string) {
+  /** Track a background database write so shutdown and tests can wait for it. */
+  private track<T>(p: Promise<T>): Promise<T | undefined> {
+    const tracked = p.catch((err: unknown) => {
+      console.error('[realtime] database write failed:', err instanceof Error ? err.message : err);
+      return undefined;
+    });
+    this.pending.add(tracked);
+    void tracked.finally(() => this.pending.delete(tracked));
+    return tracked;
+  }
+
+  /** Resolves once queued frames and background writes have finished. */
+  async idle(): Promise<void> {
+    await Promise.all([...this.conns.values()].map((c) => c.chain));
+    while (this.pending.size) await Promise.all([...this.pending]);
+  }
+
+  /** Handle one inbound frame from a client. Frames are queued per connection. */
+  handle(connId: string, raw: string): Promise<void> {
     const conn = this.conns.get(connId);
-    if (!conn) return;
-    if (raw.length > MAX_FRAME_BYTES) return this.error(connId, 'too_large', 'Frame too large.');
+    if (!conn) return Promise.resolve();
+    if (raw.length > MAX_FRAME_BYTES) {
+      this.error(connId, 'too_large', 'Frame too large.');
+      return conn.chain;
+    }
     const now = Date.now();
     conn.frames = conn.frames.filter((t) => t > now - 1000);
-    if (conn.frames.length >= 40) return this.error(connId, 'rate_limited', 'Slow down.');
+    if (conn.frames.length >= 40) {
+      this.error(connId, 'rate_limited', 'Slow down.');
+      return conn.chain;
+    }
     conn.frames.push(now);
+    conn.chain = conn.chain
+      .then(() => this.process(conn, raw))
+      .catch((err: unknown) => {
+        console.error('[realtime] frame failed:', err instanceof Error ? err.message : err);
+        this.error(connId, 'server_error', 'Something went wrong handling that message.');
+      });
+    return conn.chain;
+  }
+
+  private async process(conn: Conn, raw: string): Promise<void> {
+    const connId = conn.id;
+    if (!this.conns.has(connId)) return;
     let msg: { type?: string; [k: string]: unknown };
     try {
       msg = JSON.parse(raw) as typeof msg;
@@ -129,7 +169,7 @@ export class RealtimeHub {
         return this.send(connId, { type: 'pong', t: msg.t ?? null });
       case 'subscribe': {
         const communityId = typeof msg.treeId === 'string' ? msg.treeId : '';
-        if (!isMember(this.db, communityId, conn.userId)) return this.error(connId, 'not_member', 'Join this Tree to receive its chat.', communityId);
+        if (!(await isMember(this.db, communityId, conn.userId))) return this.error(connId, 'not_member', 'Join this Tree to receive its chat.', communityId);
         conn.rooms.add(communityId);
         return this.send(connId, { type: 'subscribed', treeId: communityId });
       }
@@ -153,10 +193,12 @@ export class RealtimeHub {
 
   // ------------------------------------------------------------------ chat
 
-  broadcastMessage(communityId: string, message: ChatMessage) {
-    for (const conn of this.conns.values()) {
-      if (!conn.rooms.has(communityId)) continue;
-      if (hiddenAuthors(this.db, conn.userId).has(message.author.id)) continue;
+  async broadcastMessage(communityId: string, message: ChatMessage): Promise<void> {
+    const subscribed = [...this.conns.values()].filter((conn) => conn.rooms.has(communityId));
+    const hidden = new Map<string, Set<string>>();
+    for (const userId of new Set(subscribed.map((c) => c.userId))) hidden.set(userId, await hiddenAuthors(this.db, userId));
+    for (const conn of subscribed) {
+      if (hidden.get(conn.userId)?.has(message.author.id)) continue;
       this.send(conn.id, { type: 'message', treeId: communityId, message: { ...message, mine: message.author.id === conn.userId } });
     }
   }
@@ -175,25 +217,25 @@ export class RealtimeHub {
   // ----------------------------------------------------------------- calls
 
   /** Both users must share a Tree (the given one, if any) and neither may have blocked the other. */
-  canCall(callerId: string, calleeId: string, communityId: string | null): string | null {
+  async canCall(callerId: string, calleeId: string, communityId: string | null): Promise<string | null> {
     if (callerId === calleeId) return 'You cannot call yourself.';
-    const blocked = get(
+    const blocked = await get(
       this.db,
       "SELECT 1 FROM blocks WHERE kind = 'block' AND ((user_id = ? AND target_user_id = ?) OR (user_id = ? AND target_user_id = ?))",
       [callerId, calleeId, calleeId, callerId],
     );
     if (blocked) return 'Calls are not possible between these listeners.';
     if (communityId) {
-      if (!isMember(this.db, communityId, callerId) || !isMember(this.db, communityId, calleeId)) return 'You can only call members of a Tree you share.';
+      if (!(await isMember(this.db, communityId, callerId)) || !(await isMember(this.db, communityId, calleeId))) return 'You can only call members of a Tree you share.';
     } else {
-      const shared = get(
+      const shared = await get(
         this.db,
         'SELECT 1 FROM community_memberships a JOIN community_memberships b ON a.community_id = b.community_id WHERE a.user_id = ? AND b.user_id = ? LIMIT 1',
         [callerId, calleeId],
       );
       if (!shared) return 'You can only call members of a Tree you share.';
     }
-    const callee = get<{ is_demo: number }>(this.db, 'SELECT is_demo FROM users WHERE id = ?', [calleeId]);
+    const callee = await get<{ is_demo: number }>(this.db, 'SELECT is_demo FROM users WHERE id = ?', [calleeId]);
     if (!callee) return 'User not found.';
     if (callee.is_demo === 2) return 'Demo listeners are fictional and cannot take calls.';
     return null;
@@ -204,7 +246,7 @@ export class RealtimeHub {
     return false;
   }
 
-  private invite(conn: Conn, msg: Record<string, unknown>) {
+  private async invite(conn: Conn, msg: Record<string, unknown>) {
     if (!this.config.calls.enabled) return this.error(conn.id, 'calls_disabled', 'Calls are disabled on this server.');
     if (this.limiter.check(`call:${conn.userId}`, LIMITS.callInvite.limit, LIMITS.callInvite.windowMs) > 0) {
       return this.error(conn.id, 'rate_limited', 'Too many call attempts. Wait a minute.');
@@ -212,23 +254,36 @@ export class RealtimeHub {
     const media = msg.media === 'video' ? 'video' : 'audio';
     const communityId = typeof msg.treeId === 'string' ? msg.treeId : null;
     const calleeId = typeof msg.to === 'string' ? msg.to : '';
-    const denied = this.canCall(conn.userId, calleeId, communityId);
+    const denied = await this.canCall(conn.userId, calleeId, communityId);
     if (denied) return this.error(conn.id, 'call_denied', denied);
     if (!this.isOnline(calleeId)) return this.error(conn.id, 'callee_offline', 'That listener is not online right now.');
     if (this.busy(conn.userId) || this.busy(calleeId)) return this.error(conn.id, 'busy', 'One of you is already in a call.');
 
-    const call: ActiveCall = { id: newId(9), callerId: conn.userId, calleeId, communityId, media, status: 'ringing', timer: null };
+    const [caller, callee] = await Promise.all(
+      [conn.userId, calleeId].map(async (id) => (await get<{ handle: string; display_name: string }>(this.db, 'SELECT handle, display_name FROM users WHERE id = ?', [id]))!),
+    );
+    // Re-check after the awaits: either side may have gone offline or started another call meanwhile.
+    if (!this.isOnline(calleeId)) return this.error(conn.id, 'callee_offline', 'That listener is not online right now.');
+    if (this.busy(conn.userId) || this.busy(calleeId)) return this.error(conn.id, 'busy', 'One of you is already in a call.');
+
+    const call: ActiveCall = { id: newId(9), callerId: conn.userId, calleeId, communityId, media, status: 'ringing', timer: null, log: Promise.resolve() };
     this.calls.set(call.id, call);
-    run(this.db, "INSERT INTO calls (id, caller_id, callee_id, community_id, media, status, created_at) VALUES (?, ?, ?, ?, ?, 'ringing', ?)", [
+    this.record(call, "INSERT INTO calls (id, caller_id, callee_id, community_id, media, status, created_at) VALUES (?, ?, ?, ?, ?, 'ringing', ?)", [
       call.id, call.callerId, call.calleeId, communityId, media, nowIso(),
     ]);
-    const caller = get<{ handle: string; display_name: string }>(this.db, 'SELECT handle, display_name FROM users WHERE id = ?', [conn.userId])!;
-    const callee = get<{ handle: string; display_name: string }>(this.db, 'SELECT handle, display_name FROM users WHERE id = ?', [calleeId])!;
     const ice = this.callConfig();
     this.sendToUser(conn.userId, { type: 'call:ringing', callId: call.id, media, peer: { id: calleeId, handle: callee.handle, displayName: callee.display_name }, ice });
     this.sendToUser(calleeId, { type: 'call:incoming', callId: call.id, media, treeId: communityId, peer: { id: conn.userId, handle: caller.handle, displayName: caller.display_name }, ice });
     call.timer = setTimeout(() => this.finishCall(call, 'missed', 'no_answer'), this.ringTimeoutMs);
     call.timer.unref?.();
+  }
+
+  /** Append a write to the call's log so its rows are written in order. */
+  private record(call: ActiveCall, sql: string, params: (string | null)[]) {
+    call.log = call.log.then(async () => {
+      await this.track(run(this.db, sql, params));
+    });
+    void this.track(call.log);
   }
 
   private participant(conn: Conn, callId: string): ActiveCall | null {
@@ -246,7 +301,7 @@ export class RealtimeHub {
     if (call.calleeId !== conn.userId || call.status !== 'ringing') return this.error(conn.id, 'bad_state', 'Only the person being called can answer.', callId);
     if (call.timer) clearTimeout(call.timer);
     call.status = 'active';
-    run(this.db, "UPDATE calls SET status = 'active', answered_at = ? WHERE id = ?", [nowIso(), call.id]);
+    this.record(call, "UPDATE calls SET status = 'active', answered_at = ? WHERE id = ?", [nowIso(), call.id]);
     this.sendToUser(call.callerId, { type: 'call:accepted', callId });
     // Tell the callee's other devices to stop ringing.
     this.sendToUser(call.calleeId, { type: 'call:answered', callId, byConnection: conn.id });
@@ -281,7 +336,7 @@ export class RealtimeHub {
     if (!this.calls.has(call.id)) return;
     if (call.timer) clearTimeout(call.timer);
     this.calls.delete(call.id);
-    run(this.db, 'UPDATE calls SET status = ?, end_reason = ?, ended_at = ? WHERE id = ?', [status, reason, nowIso(), call.id]);
+    this.record(call, 'UPDATE calls SET status = ?, end_reason = ?, ended_at = ? WHERE id = ?', [status, reason, nowIso(), call.id]);
     const payload = { type: 'call:ended', callId: call.id, status, reason };
     this.sendToUser(call.callerId, payload);
     this.sendToUser(call.calleeId, payload);
@@ -291,8 +346,8 @@ export class RealtimeHub {
     return this.calls.size;
   }
 
-  /** Close everything (server shutdown / tests). */
-  closeAll() {
+  /** Close everything (server shutdown / tests); resolves once pending writes have finished. */
+  async closeAll(): Promise<void> {
     for (const call of [...this.calls.values()]) this.finishCall(call, 'failed', 'server_shutdown');
     for (const conn of [...this.conns.values()]) {
       try {
@@ -302,10 +357,11 @@ export class RealtimeHub {
       }
       this.disconnect(conn.id);
     }
+    await this.idle();
   }
 
-  onlineMembers(communityId: string): string[] {
-    return all<{ user_id: string }>(this.db, 'SELECT user_id FROM community_memberships WHERE community_id = ?', [communityId])
+  async onlineMembers(communityId: string): Promise<string[]> {
+    return (await all<{ user_id: string }>(this.db, 'SELECT user_id FROM community_memberships WHERE community_id = ?', [communityId]))
       .map((m) => m.user_id)
       .filter((id) => this.isOnline(id));
   }

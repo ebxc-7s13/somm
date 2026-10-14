@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateProposals } from '../../src/server/services/communities';
-import { createTestServer, csv, electronicCsv, jazzCsv, type TestClient } from '../helpers/server';
+import { createTestServer, csv, electronicCsv, jazzCsv, type TestClient, type TestServer } from '../helpers/server';
 
-async function listener(server: ReturnType<typeof createTestServer>, handle: string, content: string, opts: { discoverable?: boolean; visibility?: 'private' | 'shared' | 'public' } = {}) {
+async function listener(server: TestServer, handle: string, content: string, opts: { discoverable?: boolean; visibility?: 'private' | 'shared' | 'public' } = {}) {
   const c = server.client();
   await c.signup(handle);
   await c.importCsv(content, { visibility: opts.visibility ?? 'shared' });
@@ -10,7 +10,7 @@ async function listener(server: ReturnType<typeof createTestServer>, handle: str
   return c;
 }
 
-async function community(server: ReturnType<typeof createTestServer>) {
+async function community(server: TestServer) {
   const e1 = await listener(server, 'electro-one', electronicCsv('One', 20));
   const e2 = await listener(server, 'electro-two', electronicCsv('Two', 20));
   const e3 = await listener(server, 'electro-three', electronicCsv('Three', 16));
@@ -20,7 +20,7 @@ async function community(server: ReturnType<typeof createTestServer>) {
 
 describe('Tree creation and evidence thresholds', () => {
   it('refuses to create a Tree without enough compatible listeners', async () => {
-    const server = createTestServer();
+    const server = await createTestServer();
     const lonely = await listener(server, 'lonely-listener', electronicCsv('Solo', 10));
     const e = (await lonely.get('/api/trees/eligibility')).body;
     expect(e.eligible).toBe(false);
@@ -31,7 +31,7 @@ describe('Tree creation and evidence thresholds', () => {
   });
 
   it('allows creation once enough compatible listeners exist, and ignores incompatible ones', async () => {
-    const server = createTestServer();
+    const server = await createTestServer();
     const { e1, j1 } = await community(server);
     expect((await j1.get('/api/trees/eligibility')).body.eligible).toBe(false);
     const elig = (await e1.get('/api/trees/eligibility')).body;
@@ -44,9 +44,9 @@ describe('Tree creation and evidence thresholds', () => {
   });
 
   it('proposes Trees from clusters with labels from the data, visible only to candidates until joined', async () => {
-    const server = createTestServer();
+    const server = await createTestServer();
     const { e1, e2, j1 } = await community(server);
-    const result = generateProposals(server.ctx.db, server.ctx.config.matchWeights);
+    const result = await generateProposals(server.ctx.db, server.ctx.config.matchWeights);
     expect(result.created).toHaveLength(1);
     const recs = (await e1.get('/api/trees/recommended')).body.recommendations;
     expect(recs[0].community.status).toBe('proposed');
@@ -68,7 +68,7 @@ describe('Tree creation and evidence thresholds', () => {
 
 describe('Tree recommendations, privacy and membership', () => {
   async function activeTree() {
-    const server = createTestServer();
+    const server = await createTestServer();
     const people = await community(server);
     const created = (await people.e1.post('/api/trees', { name: 'Synth Garden' })).body.tree;
     return { server, ...people, slug: created.slug as string, id: created.id as string };
@@ -139,7 +139,7 @@ describe('Tree recommendations, privacy and membership', () => {
   });
 
   it('handles empty and low-population Trees', async () => {
-    const server = createTestServer();
+    const server = await createTestServer();
     const a = await listener(server, 'empty-tree-viewer', electronicCsv('A', 3));
     expect((await a.get('/api/trees')).body.trees).toEqual([]);
     expect((await a.get('/api/trees/recommended')).body.recommendations).toEqual([]);
@@ -177,7 +177,7 @@ describe('Tree recommendations, privacy and membership', () => {
 
 describe('Tree chat', () => {
   async function chatRoom() {
-    const server = createTestServer();
+    const server = await createTestServer();
     const people = await community(server);
     const tree = (await people.e1.post('/api/trees', { name: 'Chat Garden' })).body.tree;
     await people.e2.post(`/api/trees/${tree.slug}/join`);

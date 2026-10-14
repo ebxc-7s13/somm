@@ -10,18 +10,18 @@ import { commitImport, commitSchema, jobProgress, previewImport, previewSchema, 
 
 export const importRoutes = new Hono<Env>()
   // ------------------------------------------------------------ providers
-  .get('/providers', (c) => {
+  .get('/providers', async (c) => {
     const user = c.get('user');
     const { providers, queue } = c.get('ctx');
     return c.json({
-      providers: providers.statuses(user?.id ?? null),
+      providers: await providers.statuses(user?.id ?? null),
       enrichment: { enabled: queue.enabled, reason: queue.disabledReason },
       tokenStorage: providers.vault ? (providers.vaultIsEphemeral ? 'ephemeral (development: set TOKEN_ENCRYPTION_KEY)' : 'encrypted') : 'unavailable',
     });
   })
-  .get('/providers/spotify/authorize', (c) => {
+  .get('/providers/spotify/authorize', async (c) => {
     const user = requireUser(c);
-    return c.json({ url: c.get('ctx').providers.spotifyAuthorize(user.id) });
+    return c.json({ url: await c.get('ctx').providers.spotifyAuthorize(user.id) });
   })
   .get('/providers/spotify/callback', async (c) => {
     const { config, providers } = c.get('ctx');
@@ -56,18 +56,18 @@ export const importRoutes = new Hono<Env>()
   .post('/providers/apple_music/user-token', async (c) => {
     const user = requireUser(c);
     const { musicUserToken } = z.object({ musicUserToken: z.string().min(10).max(4000) }).parse(await c.req.json());
-    c.get('ctx').providers.storeTokens(user.id, 'apple_music', musicUserToken, null, null, 'library-read');
+    await c.get('ctx').providers.storeTokens(user.id, 'apple_music', musicUserToken, null, null, 'library-read');
     return c.json({ ok: true });
   })
   .get('/providers/apple_music/playlists', async (c) => {
     const user = requireUser(c);
-    return c.json({ playlists: await c.get('ctx').providers.appleClient(user.id).listLibraryPlaylists() });
+    return c.json({ playlists: await (await c.get('ctx').providers.appleClient(user.id)).listLibraryPlaylists() });
   })
-  .delete('/providers/:provider', (c) => {
+  .delete('/providers/:provider', async (c) => {
     const user = requireUser(c);
     const provider = c.req.param('provider');
     if (!['spotify', 'apple_music'].includes(provider)) throw new ApiError(404, 'unknown_provider', 'Unknown provider.');
-    return c.json({ disconnected: c.get('ctx').providers.disconnect(user.id, provider) });
+    return c.json({ disconnected: await c.get('ctx').providers.disconnect(user.id, provider) });
   })
 
   // -------------------------------------------------------------- imports
@@ -83,29 +83,29 @@ export const importRoutes = new Hono<Env>()
     const user = requireUser(c);
     const input = commitSchema.parse(await c.req.json());
     const { db, queue, refreshUsers } = c.get('ctx');
-    const result = commitImport(db, user.id, c.req.param('draftId'), input);
+    const result = await commitImport(db, user.id, c.req.param('draftId'), input);
     // Compute a first map straight away from the metadata we already have.
-    refreshUsers([user.id]);
+    await refreshUsers([user.id]);
     queue.kick();
     return c.json(result, 201);
   })
-  .get('/imports/jobs', (c) => {
+  .get('/imports/jobs', async (c) => {
     const user = requireUser(c);
     const { db } = c.get('ctx');
-    const ids = all<{ id: string }>(db, 'SELECT id FROM import_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', [user.id]);
-    return c.json({ jobs: ids.map((j) => jobProgress(db, user.id, j.id)) });
+    const ids = await all<{ id: string }>(db, 'SELECT id FROM import_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT 20', [user.id]);
+    return c.json({ jobs: await Promise.all(ids.map((j) => jobProgress(db, user.id, j.id))) });
   })
-  .get('/imports/jobs/:id', (c) => {
+  .get('/imports/jobs/:id', async (c) => {
     const user = requireUser(c);
     const { db, queue } = c.get('ctx');
-    const job = jobProgress(db, user.id, c.req.param('id'));
+    const job = await jobProgress(db, user.id, c.req.param('id'));
     if (!job) throw new ApiError(404, 'not_found', 'Import job not found.');
     return c.json({ job, enrichment: { enabled: queue.enabled, reason: queue.disabledReason } });
   })
-  .post('/imports/jobs/:id/retry', (c) => {
+  .post('/imports/jobs/:id/retry', async (c) => {
     const user = requireUser(c);
     const { db, queue } = c.get('ctx');
-    const requeued = retryJob(db, user.id, c.req.param('id'));
+    const requeued = await retryJob(db, user.id, c.req.param('id'));
     queue.kick();
     return c.json({ requeued });
   })
@@ -130,7 +130,7 @@ export const importRoutes = new Hono<Env>()
     // Only the user's own library is searched locally. SOMM's shared catalogue is
     // never searched directly, because a hit would reveal that someone imported a track.
     const like = `%${q.replace(/[%_]/g, '')}%`;
-    const library = all<{ id: string; title: string; version: string | null; artist: string; album: string | null; year: number | null }>(
+    const library = await all<{ id: string; title: string; version: string | null; artist: string; album: string | null; year: number | null }>(
       db,
       `SELECT t.id, t.title, t.version, a.name AS artist, al.title AS album, t.release_year AS year
        FROM tracks t JOIN artists a ON a.id = t.primary_artist_id LEFT JOIN albums al ON al.id = t.album_id

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { get } from '../../src/server/db';
 import { parseCsv, parseCsvRows, parseDuration, parseJson, parseM3u, parseText, parseXspf } from '../../src/server/import/adapters/files';
 import { ImportError } from '../../src/server/import/types';
 import { createTestServer, csv } from '../helpers/server';
@@ -112,7 +113,7 @@ describe('file adapters', () => {
 
 describe('import workflow (preview → commit)', () => {
   it('classifies duplicates, alternate versions and invalid rows in the preview', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     await a.signup('preview-tester');
     const r = await a.post('/api/imports/preview', { source: 'csv', content: fixture('neon-tides.csv'), fileName: 'neon-tides.csv' });
@@ -129,7 +130,7 @@ describe('import workflow (preview → commit)', () => {
   });
 
   it('commits, deduplicates against the catalogue and keeps versions distinct', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const a = client();
     await a.signup('importer');
     const first = await a.importCsv(fixture('neon-tides.csv'));
@@ -145,12 +146,12 @@ describe('import workflow (preview → commit)', () => {
     const b = client();
     await b.signup('second-importer');
     await b.importCsv(csv([['Glass Orbit (Album Version)', 'Nova Lattice', 'Neon Tides', '', '2019']]).replace('title,artist,album,genre,year', 'title,artist,album,genre,year') + '');
-    const tracks = ctx.db.prepare("SELECT COUNT(*) AS n FROM tracks WHERE normalized_title = 'glass orbit' AND version IS NULL").get() as { n: number };
+    const tracks = (await get<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM tracks WHERE normalized_title = 'glass orbit' AND version IS NULL"))!;
     expect(tracks.n).toBe(1);
   });
 
   it('does not merge same title+artist when durations conflict', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const a = client();
     await a.signup('durations');
     const content = 'title,artist,duration\nEcho Room,Mira Sol,3:00\nEcho Room,Mira Sol,9:30';
@@ -158,11 +159,11 @@ describe('import workflow (preview → commit)', () => {
     expect(preview.body.entries[1].status).not.toBe('duplicate');
     expect(preview.body.entries[1].notes.join(' ')).toMatch(/different length/);
     await a.post(`/api/imports/${preview.body.draftId}/commit`, {});
-    expect((ctx.db.prepare("SELECT COUNT(*) AS n FROM tracks WHERE normalized_title = 'echo room'").get() as { n: number }).n).toBe(2);
+    expect((await get<{ n: number }>(ctx.db, "SELECT COUNT(*) AS n FROM tracks WHERE normalized_title = 'echo room'"))!.n).toBe(2);
   });
 
   it('marks songs already in the library', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     await a.signup('repeat-importer');
     await a.importCsv(csv([['Glass Orbit', 'Nova Lattice']]));
@@ -172,7 +173,7 @@ describe('import workflow (preview → commit)', () => {
   });
 
   it('lets the user include a duplicate or skip rows explicitly', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     await a.signup('chooser');
     const content = csv([['A', 'X'], ['A', 'X'], ['B', 'X']]);
@@ -186,7 +187,7 @@ describe('import workflow (preview → commit)', () => {
   });
 
   it('returns structured errors for invalid, empty and unsupported imports', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const a = client();
     await a.signup('errors');
     expect((await a.post('/api/imports/preview', { source: 'csv', content: '' })).body.error.code).toBe('empty');
@@ -203,13 +204,13 @@ describe('import workflow (preview → commit)', () => {
   });
 
   it('requires authentication to import', async () => {
-    const { client } = createTestServer();
+    const { client } = await createTestServer();
     const r = await client().post('/api/imports/preview', { source: 'text', content: 'A - B' });
     expect(r.status).toBe(401);
   });
 
   it('reports job progress and finishes without enrichment when MusicBrainz is not configured', async () => {
-    const { client, ctx } = createTestServer();
+    const { client, ctx } = await createTestServer();
     const a = client();
     await a.signup('jobs');
     const { jobId } = await a.importCsv(csv([['A', 'X', '', 'jazz'], ['B', 'Y']]));
