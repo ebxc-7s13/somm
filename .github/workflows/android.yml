@@ -5,6 +5,15 @@ name: Android APK
 # secrets SOMM_KEYSTORE_BASE64 + SOMM_KEYSTORE_PASSWORD. See docs/DEPLOYMENT.md.
 on:
   workflow_dispatch:
+    inputs:
+      app_url:
+        description: Server URL for this build (leave empty to use the SOMM_APP_URL variable)
+        required: false
+        default: ''
+      publish:
+        description: Publish the APK as a GitHub release (otherwise it is only kept as a 30-day artifact)
+        type: boolean
+        default: true
   push:
     branches: [main]
     paths:
@@ -29,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SOMM_APP_URL: ${{ vars.SOMM_APP_URL }}
+      SOMM_APP_URL: ${{ inputs.app_url || vars.SOMM_APP_URL }}
     steps:
       - uses: actions/checkout@v5
 
@@ -94,6 +103,7 @@ jobs:
           retention-days: 30
 
       - name: Publish as a GitHub release
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
