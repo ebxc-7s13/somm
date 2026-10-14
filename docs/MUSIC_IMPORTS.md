@@ -159,9 +159,18 @@ page sends rows in batches with a progress bar and a Stop button; only empty cel
   duet single), Shape of You (2017 single), Bohemian Rhapsody (*A Night at the Opera*, 1975), Never Gonna Give You Up
   (*Whenever You Need Somebody*, 1987), Kesariya and Tum Hi Ho (their film soundtracks), APT. (2024 single) all
   matched the original recording with an ISRC.
-* **Title only:** MusicBrainz search has no popularity ranking, and popular titles have hundreds of covers (verified
-  live: the original “Blinding Lights” is not among the first 100 title-only results). The artist is therefore filled
-  in only when every strong match shares one artist (status `check`); otherwise the row is marked `needs_artist`.
+* **Title only** (e.g. Spotify links, whose oEmbed gives no artist): MusicBrainz search has no popularity ranking,
+  and popular titles have hundreds of covers (verified live: the original “Blinding Lights” is not among the first 100
+  title-only results, and ListenBrainz popularity over those results favours covers too). So: if every strong
+  MusicBrainz match shares one artist, that artist is used. Otherwise SOMM asks **Wikidata** (CC0; its search ranks
+  well-known items first) for the best-known song item with exactly that title — skipping films, albums, music videos —
+  and takes the performer from its description (“2020 single by Dua Lipa featuring …”) or its performer claim (P175).
+  The suggestion is used only if MusicBrainz then confirms that performer recorded the title; such rows are marked
+  `check`. If MusicBrainz cannot confirm, the row is `needs_artist` with the suggestion in its message.
+  Checked live 2026-10-14 with titles only: Blinding Lights → The Weeknd, Shape of You → Ed Sheeran, Flowers → Miley
+  Cyrus, Levitating → Dua Lipa, Believer → Imagine Dragons, Tum Hi Ho → Arijit Singh (*Aashiqui 2*), Bohemian
+  Rhapsody → Queen; “Perfect” → Anne-Marie (Wikidata's top item, not Ed Sheeran's) — the reason these rows say
+  *Check*.
 * **Genre:** MusicBrainz's curated recording genres, else the artist's genres (`weightGenres`, top 3). Free-form tags
   are not used — they are noisy (the same original is tagged “jazz” and “trance”).
 * Year (first release date) and ISRC are filled when empty. Lookups are cached in memory only; nothing the listener

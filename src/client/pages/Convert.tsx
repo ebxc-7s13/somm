@@ -433,8 +433,8 @@ export function ConvertPage() {
             </h3>
             <p className="small muted" style={{ margin: 0 }}>
               Looks each song up in MusicBrainz, the open music database, and fills in a missing artist, album, year and genre — the genre is what
-              places a song on your Music Map. Only empty cells are filled. Songs with an artist match best; for a title alone, the artist is filled in
-              only when one artist clearly owns that title.
+              places a song on your Music Map. Only empty cells are filled. Songs with an artist match best. For a title alone, SOMM asks Wikidata
+              for the performer of the best-known song with that title and uses it only if MusicBrainz confirms it — check those rows.
             </p>
             {matching ? (
               <div className="stack" role="status" aria-live="polite">
@@ -463,7 +463,8 @@ export function ConvertPage() {
               </p>
             )}
             <p className="xsmall faint" style={{ margin: 0 }}>
-              Song details from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a> (core data CC0; genres CC BY-NC-SA 3.0).
+              Song details from <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a> (core data CC0; genres CC BY-NC-SA
+              3.0); artist suggestions for titles from <a href="https://www.wikidata.org" target="_blank" rel="noopener noreferrer">Wikidata</a> (CC0).
             </p>
           </div>
 

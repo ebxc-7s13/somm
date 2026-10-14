@@ -69,11 +69,15 @@ describe('parseYouTubeTitle', () => {
   });
 
   it('drops video-quality tags, which are not audio versions', () => {
-    for (const tag of ['(4K Remaster)', '[HD Remastered]', '(Remastered in 4K)', '(HQ Video)']) {
+    for (const tag of ['(4K Remaster)', '[HD Remastered]', '(Remastered in 4K)', '(HQ Video)', '(Official Video Remastered)', '[Official Lyric Video]', '(Explicit)']) {
       expect(parseYouTubeTitle(`Nova Lattice - Glass Orbit ${tag}`, null).title).toBe('Glass Orbit');
     }
-    // A real audio remaster stays a version.
+    // Real versions stay: an audio remaster, and a live performance even when it is "official video".
     expect(parseTitle('Glass Orbit (2011 Remaster)').version).toBe('remaster');
+    const live = parseYouTubeTitle('Nova Lattice - Glass Orbit (Official Live Video)', null).title;
+    expect(live).toBe('Glass Orbit (Official Live Video)');
+    expect(parseTitle(live).version).toBe('live');
+    expect(parseYouTubeTitle('Arijit Singh - Kesariya (From "Brahmastra")', null).title).toBe('Kesariya (From "Brahmastra")');
   });
 
   it('uses "- Topic" channels as the artist', () => {

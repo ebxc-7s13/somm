@@ -167,8 +167,10 @@ export function fallbackTrackKey(title: string, primaryArtist: string, version: 
   return `${normalizeText(title)}|${normalizeText(primaryArtist)}|${version ?? ''}`;
 }
 
-const YOUTUBE_NOISE =
-  /\s*[([](?:official(?: music)? (?:video|audio|visuali[sz]er|lyric video)|official|lyrics?|lyric video|audio|video|(?:4k|hd|hq)(?: (?:remaster(?:ed)?|video|upgrade))?|remastered in (?:4k|hd)|visuali[sz]er|music video|mv|explicit)[)\]]/gi;
+/** Bracketed video tags: "(Official Video)", "[Lyrics]", "(4K Remaster)", "(Official Video Remastered)"… */
+const VIDEO_TAG = /\b(official|video|visuali[sz]er|lyrics?|audio|mv|hd|hq|4k|explicit)\b/i;
+/** …unless the tag names a real version of the song: "(Official Live Video)" stays a live version. */
+const KEEP_TAG = /\b(live|remix|mix|acoustic|unplugged|cover|instrumental|karaoke|demo|edit|version|session|feat\.?|ft\.?|featuring)\b/i;
 
 /**
  * Best-effort split of a YouTube video title into artist and title.
@@ -180,7 +182,7 @@ export function parseYouTubeTitle(
   channelTitle: string | null,
 ): { artist: string | null; title: string; confidence: 'medium' | 'low' } {
   const cleaned = cleanDisplayText(videoTitle)
-    .replace(YOUTUBE_NOISE, '')
+    .replace(/\s*[([]([^()[\]]+)[)\]]/g, (whole, inner: string) => (VIDEO_TAG.test(inner) && !KEEP_TAG.test(inner) ? '' : whole))
     .replace(/\s+(?:official (?:music )?video|official audio)$/i, '')
     .trim();
   const channelArtist = channelTitle

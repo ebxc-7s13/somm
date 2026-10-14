@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { loadConfig, PROJECT_URL } from '../../src/server/config';
 import { SongMatcher } from '../../src/server/enrich/matcher';
 import { MusicBrainzClient } from '../../src/server/enrich/musicbrainz';
+import { WikidataClient } from '../../src/server/enrich/wikidata';
 import { parseNameList } from '../../src/server/import/adapters/files';
 import { classifyLink, containsLinks } from '../../src/server/import/adapters/oembed';
 import { createTestServer } from '../helpers/server';
@@ -78,6 +79,9 @@ function musicBrainz(opts: { fail?: boolean } = {}) {
             ],
           });
         }
+        if (title === 'Blue Hour' && artist === 'Teo Vance') {
+          return json({ recordings: [{ id: 'rec-b1', score: 100, title: 'Blue Hour', 'first-release-date': '2019-05-03', 'artist-credit': [credit('Teo Vance')], releases: [release('Blue Hour', '2019-05-03', 'Single')] }] });
+        }
         if (title === 'Blue Hour' && !artist) {
           return json({
             recordings: [
@@ -105,9 +109,46 @@ function musicBrainz(opts: { fail?: boolean } = {}) {
       match: /\/ws\/2\/recording\/rec-qe1/,
       respond: () => json({ id: 'rec-qe1', title: 'Quiet Engine', 'first-release-date': '1964', 'artist-credit': [credit('Teo Vance')], genres: [{ name: 'hard bop', count: 2 }], tags: [], isrcs: [], relations: [] }),
     },
+    {
+      match: /\/ws\/2\/recording\/rec-b1/,
+      respond: () => json({ id: 'rec-b1', title: 'Blue Hour', 'first-release-date': '2019-05-03', 'artist-credit': [credit('Teo Vance')], genres: [{ name: 'cool jazz', count: 2 }], tags: [], isrcs: [], relations: [] }),
+    },
     { match: /\/ws\/2\/artist\/mb-ivy-marlowe/, respond: () => json({ genres: [{ name: 'indie pop', count: 3 }] }) },
   ]);
   return { ...mock, client: new MusicBrainzClient('test@example.invalid', mock.fetchImpl, { intervalMs: 0, sleep: noSleep }) };
+}
+
+/** A fictional Wikidata: "Blue Hour" is best known as Teo Vance's single; "Dawn Song" points to an artist MusicBrainz does not know. */
+function wikidata(opts: { fail?: boolean } = {}) {
+  const mock = mockFetch([
+    {
+      match: /wikidata\.org\/w\/api\.php/,
+      respond: (url) => {
+        if (opts.fail) return json({}, 500);
+        const p = new URL(url).searchParams;
+        if (p.get('action') === 'wbsearchentities') {
+          const search = p.get('search');
+          if (search === 'Blue Hour') {
+            return json({
+              search: [
+                { id: 'Q10', label: 'Blue Hour', description: '2021 film by Someone' },
+                // Like real data: the description names a writer, so the structured performer claim is used.
+                { id: 'Q11', label: 'Blue Hour', description: '2019 Teo Vance song written by Somebody Else' },
+              ],
+            });
+          }
+          if (search === 'Dawn Song') return json({ search: [{ id: 'Q20', label: 'Dawn Song', description: '2024 song by Unknown Act featuring Someone Else' }] });
+          return json({ search: [] });
+        }
+        if (p.get('props') === 'claims') {
+          const id = p.get('ids')!;
+          return json({ entities: { [id]: { claims: id === 'Q11' ? { P175: [{ mainsnak: { datavalue: { value: { id: 'Q99' } } } }] } : {} } } });
+        }
+        return json({ entities: { Q99: { labels: { en: { value: 'Teo Vance' } } } } });
+      },
+    },
+  ]);
+  return { ...mock, client: new WikidataClient('test@example.invalid', mock.fetchImpl, { intervalMs: 0, sleep: noSleep }) };
 }
 
 const row = (title: string, artist = '', extra: Partial<Record<'album' | 'year' | 'genre' | 'isrc', string>> = {}) => ({ title, artist, album: '', year: '', genre: '', isrc: '', ...extra });
@@ -153,6 +194,27 @@ describe('song matching (MusicBrainz)', () => {
     expect(ambiguous.fill).toEqual({});
     expect(ambiguous.message).toMatch(/Type the artist/);
     expect((await matcher.match(row('Nothing Like This', 'Nobody'))).status).toBe('not_found');
+  });
+
+  it('asks Wikidata who performs the best-known song with a title, and uses it only when MusicBrainz confirms', async () => {
+    const { client } = musicBrainz();
+    const wd = wikidata();
+    const matcher = new SongMatcher(client, wd.client);
+    const confirmed = await matcher.match(row('Blue Hour'));
+    expect(confirmed.status).toBe('check');
+    expect(confirmed.fill).toMatchObject({ artist: 'Teo Vance', album: 'Blue Hour', year: '2019-05-03', genre: 'cool jazz' });
+    expect(confirmed.message).toMatch(/Wikidata/);
+    // The film with the same title is skipped; the performer comes from the structured claim.
+    expect(wd.calls.map((c) => new URL(c.url).searchParams.get('action'))).toEqual(['wbsearchentities', 'wbgetentities', 'wbgetentities']);
+    const unconfirmed = await matcher.match(row('Dawn Song'));
+    expect(unconfirmed).toMatchObject({ status: 'needs_artist', fill: {} });
+    expect(unconfirmed.message).toMatch(/Wikidata suggests Unknown Act/);
+  });
+
+  it('falls back to asking for the artist when Wikidata is unavailable', async () => {
+    const { client } = musicBrainz();
+    const r = await new SongMatcher(client, wikidata({ fail: true }).client).match(row('Blue Hour'));
+    expect(r.status).toBe('needs_artist');
   });
 
   it('reports a busy MusicBrainz instead of failing', async () => {

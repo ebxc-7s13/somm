@@ -7,6 +7,7 @@ import { openDatabase, type DB } from './db';
 import { ItunesClient } from './enrich/itunes';
 import { SongMatcher } from './enrich/matcher';
 import { MusicBrainzClient } from './enrich/musicbrainz';
+import { WikidataClient } from './enrich/wikidata';
 import { EnrichmentQueue } from './enrich/queue';
 import type { FetchLike } from './http';
 import { ImportError } from './import/types';
@@ -25,6 +26,8 @@ export interface ContextOptions {
   db?: DB;
   fetchImpl?: FetchLike;
   musicbrainz?: MusicBrainzClient | null;
+  /** Converter title lookups; by default created alongside a configured MusicBrainz client. */
+  wikidata?: WikidataClient | null;
   itunes?: ItunesClient | null;
   ringTimeoutMs?: number;
 }
@@ -34,6 +37,9 @@ export async function createAppContext(config: AppConfig, options: ContextOption
   const mbConfigured = config.musicbrainz.enabled && !!config.musicbrainz.contact;
   const musicbrainz =
     options.musicbrainz !== undefined ? options.musicbrainz : mbConfigured ? new MusicBrainzClient(config.musicbrainz.contact!, options.fetchImpl) : null;
+  // Uses the same contact as MusicBrainz (Wikimedia's User-Agent policy asks for one).
+  const wikidata =
+    options.wikidata !== undefined ? options.wikidata : options.musicbrainz === undefined && musicbrainz ? new WikidataClient(config.musicbrainz.contact!, options.fetchImpl) : null;
   const itunes = options.itunes !== undefined ? options.itunes : config.itunesLookupEnabled ? new ItunesClient(options.fetchImpl) : null;
 
   const refreshUsers = async (userIds: string[]) => {
@@ -60,7 +66,7 @@ export async function createAppContext(config: AppConfig, options: ContextOption
     providers: new ProviderService(db, config, options.fetchImpl),
     queue,
     musicbrainz,
-    matcher: musicbrainz ? new SongMatcher(musicbrainz) : null,
+    matcher: musicbrainz ? new SongMatcher(musicbrainz, wikidata) : null,
     hub: new RealtimeHub(db, config, options.ringTimeoutMs),
     limiter: new SlidingWindowLimiter(),
     fetchImpl: options.fetchImpl,

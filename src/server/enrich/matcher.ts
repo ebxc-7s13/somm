@@ -4,13 +4,16 @@
  *
  * Title + artist matches are reliable. A title alone is ambiguous (popular songs
  * have hundreds of covers, and MusicBrainz search has no popularity ranking), so
- * an artist is only filled in when every strong match agrees on one artist.
+ * an artist is filled in only when every strong match agrees on one artist, or
+ * when Wikidata names the performer of the best-known song with that title AND
+ * MusicBrainz confirms that performer recorded it.
  *
  * Lookups are cached in memory only — nothing a listener converts is stored.
  */
 import { normalizeText, parseTitle } from '../../shared/normalize';
 import { ProviderError } from '../http';
 import { type ExtractedRecording, MusicBrainzClient, type MbRecordingSummary, weightGenres } from './musicbrainz';
+import type { SongHint, WikidataClient } from './wikidata';
 
 export interface MatchInput {
   title: string;
@@ -54,7 +57,10 @@ const VARIANT = /\b(live|demo|remix|mix|acoustic|instrumental|karaoke|edit|sessi
 export class SongMatcher {
   private cache = new Map<string, Promise<unknown>>();
 
-  constructor(private readonly mb: MusicBrainzClient) {}
+  constructor(
+    private readonly mb: MusicBrainzClient,
+    private readonly wikidata: WikidataClient | null = null,
+  ) {}
 
   /** Memoise a lookup; failed lookups are not cached. */
   private cached<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -87,6 +93,34 @@ export class SongMatcher {
     return this.cached(`a:${id}`, () => this.mb.getArtistGenres(id));
   }
 
+  /** Wikidata's performer for the best-known song with this title; lookup failures count as "no hint". */
+  private async performerHint(title: string): Promise<SongHint | null> {
+    if (!this.wikidata) return null;
+    const wikidata = this.wikidata;
+    return this.cached(`w:${normalizeText(title)}`, () => wikidata.songPerformer(title)).catch(() => null);
+  }
+
+  /** Title only and MusicBrainz cannot tell whose song it is: ask Wikidata, then confirm in MusicBrainz. */
+  private async matchViaWikidata(row: MatchInput, title: string, fallback: MatchResult): Promise<MatchResult> {
+    const hint = await this.performerHint(title);
+    if (!hint) return fallback;
+    const confirmed = await this.match({ ...row, artist: hint.performer });
+    if (confirmed.status === 'matched') {
+      return {
+        ...confirmed,
+        status: 'check',
+        fill: { ...confirmed.fill, artist: hint.performer },
+        message: `Artist from Wikidata (the best-known song with this title): ${hint.performer} — please check. ${confirmed.message}`,
+      };
+    }
+    return {
+      status: 'needs_artist',
+      fill: {},
+      url: null,
+      message: `Wikidata suggests ${hint.performer}, but MusicBrainz could not confirm it. Type the artist if that is right.`,
+    };
+  }
+
   async match(row: MatchInput): Promise<MatchResult> {
     const title = parseTitle(row.title).baseTitle || row.title.trim();
     if (!title) return { status: 'not_found', fill: {}, url: null, message: 'This row has no title.' };
@@ -113,9 +147,16 @@ export class SongMatcher {
       } else {
         const candidates = sameTitle(await this.search(title, null), MIN_SCORE).filter((h) => !h.video);
         const artists = new Set(candidates.map((h) => normalizeText(creditName(h))));
-        if (candidates.length === 0) return { status: 'not_found', fill: {}, url: null, message: `No song called “${title}” was found. Add the artist and try again.` };
+        if (candidates.length === 0) {
+          return this.matchViaWikidata(row, title, { status: 'not_found', fill: {}, url: null, message: `No song called “${title}” was found. Add the artist and try again.` });
+        }
         if (artists.size > 1) {
-          return { status: 'needs_artist', fill: {}, url: null, message: `${artists.size}+ artists have a song called “${title}”. Type the artist, then find details again.` };
+          return this.matchViaWikidata(row, title, {
+            status: 'needs_artist',
+            fill: {},
+            url: null,
+            message: `${artists.size}+ artists have a song called “${title}”. Type the artist, then find details again.`,
+          });
         }
         pick = original(candidates, wantVersion);
         status = 'check';
@@ -187,5 +228,7 @@ function albumOf(h: SearchHit): string | null {
       (r['release-group']?.['secondary-types'] ?? []).every((t) => t === 'Soundtrack'),
   );
   const pool = studio.length ? studio : releases;
-  return [...pool].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))[0]?.title ?? null;
+  // An original recording can also appear on remix or live releases; prefer releases without a version in the name.
+  const plainTitle = pool.filter((r) => parseTitle(r.title).version === null);
+  return [...(plainTitle.length ? plainTitle : pool)].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))[0]?.title ?? null;
 }
