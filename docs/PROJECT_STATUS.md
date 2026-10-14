@@ -12,10 +12,12 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | File imports: CSV, Exportify, M3U, XSPF, JSON, pasted, manual | ✅ | |
 | Spotify data-export JSON and Apple Music/iTunes playlist exports | ✅ | parsed with fictional samples of each format; not yet tried with a real export file |
 | Playlist → CSV converter (`/convert`, no account needed) | ✅ | editable sheet, download/copy, hands the same CSV to import; nothing stored |
+| Converter: pasted names, track links via oEmbed, Find song details (MusicBrainz) | ✅ | Spotify links give titles only; title-only rows get an artist only when unambiguous |
+| Converter: whole YouTube playlists by link | 🔑 | works without an account once the server has `YOUTUBE_API_KEY` (free Google key) |
 | Preview with duplicates / versions / unreadable rows | ✅ | |
 | Canonical tracks, dedupe, versions, provenance | ✅ | |
 | Song library + song detail | ✅ | |
-| MusicBrainz enrichment | 🧪 / 🔑 | needs `MUSICBRAINZ_CONTACT` for a live run |
+| MusicBrainz enrichment | ✅ | on in production (contact defaults to the project page); converter matching verified live |
 | iTunes primary-genre fallback | ✅ | one live lookup verified; off by default |
 | Spotify import (OAuth PKCE, owned/collaborative playlists) | 🧪 / 🔑 | needs a Spotify app; dev-mode limits apply |
 | YouTube import (public playlists) | 🧪 / 🔑 | needs an API key; policy review recommended |

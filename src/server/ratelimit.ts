@@ -37,6 +37,8 @@ export const LIMITS = {
   messageHourly: { limit: 120, windowMs: 3_600_000 },
   importPreview: { limit: 30, windowMs: 3_600_000 },
   convert: { limit: 30, windowMs: 600_000 },
+  // Each request matches up to 5 songs, so this allows 600 songs an hour.
+  convertMatch: { limit: 120, windowMs: 3_600_000 },
   reports: { limit: 20, windowMs: 3_600_000 },
   catalogSearch: { limit: 30, windowMs: 60_000 },
   callInvite: { limit: 6, windowMs: 60_000 },

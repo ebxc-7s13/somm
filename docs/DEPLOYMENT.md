@@ -47,6 +47,11 @@ fictional demo listeners and Trees are seeded once, in the background after star
 service’s own `https://…onrender.com` URL and client IPs are read from `X-Forwarded-For` automatically on Render. Set
 `PUBLIC_URL` explicitly if you add a custom domain.
 
+**YouTube playlists (optional, free).** In the Google Cloud console create a project, enable **YouTube Data API v3**,
+then **Credentials → Create credentials → API key**; restrict the key to the YouTube Data API v3. In Render → the
+service → **Environment**, add `YOUTUBE_API_KEY` with the key and save (Render redeploys). The default quota (10,000
+units a day) covers about 500,000 playlist videos a day, since each page of 50 videos costs one unit.
+
 **Deploying new commits.** A service created from the public repository URL (without connecting Render to GitHub)
 does not redeploy on push. CI deploys instead, and only after every check passes on `main`:
 
@@ -170,10 +175,10 @@ schedule `pg_dump` and test restores.
 | `DEMO_MODE_ENABLED` | `true` for public demos, otherwise `false` |
 | `SEED_DEMO_ON_START` | `true` only for demo deployments (fictional data) |
 | `ADMIN_HANDLES` | comma-separated moderator-of-everything handles |
-| `MUSICBRAINZ_CONTACT` | your email or URL — enables enrichment |
+| `MUSICBRAINZ_CONTACT` | an email or URL MusicBrainz can use to reach you; in production it defaults to the project page |
 | `ITUNES_LOOKUP_ENABLED` | optional |
 | `SPOTIFY_CLIENT_ID`, `SPOTIFY_REDIRECT_URI` | from the Spotify developer dashboard |
-| `YOUTUBE_API_KEY` | Google Cloud API key restricted to the YouTube Data API v3 |
+| `YOUTUBE_API_KEY` | Google Cloud API key restricted to the YouTube Data API v3 — enables whole-playlist YouTube links (see below) |
 | `APPLE_MUSIC_TEAM_ID`, `APPLE_MUSIC_KEY_ID`, `APPLE_MUSIC_PRIVATE_KEY_PATH` | Apple Developer Program MusicKit key |
 | `CALLS_ENABLED`, `STUN_URLS`, `TURN_*` | TURN strongly recommended for real-world calls |
 

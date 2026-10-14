@@ -27,6 +27,13 @@ const optional = z
   .optional()
   .transform((v) => (v && v.trim() ? v.trim() : null));
 
+/**
+ * The project's public page. MusicBrainz asks every client to identify itself with
+ * a contact URL or email; in production this page is used when MUSICBRAINZ_CONTACT
+ * is not set, so song matching and enrichment work without a personal email.
+ */
+export const PROJECT_URL = 'https://github.com/ebxc-7s13/somm';
+
 const schema = z.object({
   NODE_ENV: z.string().optional().default('development'),
   PORT: z.coerce.number().int().positive().default(8787),
@@ -132,7 +139,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     tokenEncryptionKey: key,
     demoModeEnabled: parsed.DEMO_MODE_ENABLED,
     adminHandles: (parsed.ADMIN_HANDLES ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
-    musicbrainz: { enabled: parsed.MUSICBRAINZ_ENABLED, contact: parsed.MUSICBRAINZ_CONTACT },
+    musicbrainz: { enabled: parsed.MUSICBRAINZ_ENABLED, contact: parsed.MUSICBRAINZ_CONTACT ?? (parsed.NODE_ENV === 'production' ? PROJECT_URL : null) },
     itunesLookupEnabled: parsed.ITUNES_LOOKUP_ENABLED,
     spotify: { clientId: parsed.SPOTIFY_CLIENT_ID, redirectUri: parsed.SPOTIFY_REDIRECT_URI },
     youtube: { apiKey: parsed.YOUTUBE_API_KEY },

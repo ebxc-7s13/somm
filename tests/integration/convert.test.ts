@@ -46,11 +46,13 @@ describe('playlist converter API', () => {
     expect(r.body.playlists).toHaveLength(1);
     const p = r.body.playlists[0];
     expect(p.name).toBe('Pasted');
+    // A line without an artist is kept as a title-only row for song matching to complete.
     expect(p.rows.map((x: any) => [x.artist, x.title])).toEqual([
       ['Nova Lattice', 'Glass Orbit'],
       ['Teo Vance', 'Blue Hour'],
+      ['', 'not a song line'],
     ]);
-    expect(p.errors).toHaveLength(1);
+    expect(p.errors).toHaveLength(0);
     for (const table of ['tracks', 'playlists', 'import_drafts', 'users']) {
       expect((await get<{ n: number }>(ctx.db, `SELECT COUNT(*) AS n FROM ${table}`))!.n).toBe(0);
     }
@@ -82,14 +84,19 @@ describe('playlist converter API', () => {
     expect(JSON.stringify(r.body)).not.toContain('someone');
   });
 
-  it('explains why bare Spotify links cannot be converted, and requires sign-in for playlist links', async () => {
+  it('import still explains bare Spotify links; converter playlist links need sign-in except YouTube', async () => {
     const { client } = await createTestServer();
-    const anon = client();
-    const links = await anon.post('/api/convert', { source: 'text', content: 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC\nhttps://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b' });
+    const a = client();
+    await a.signup('link-paster');
+    const links = await a.post('/api/imports/preview', { source: 'text', content: 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC\nhttps://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b' });
     expect(links.status).toBe(400);
     expect(links.body.error.message).toMatch(/Spotify song links.*Download your data/);
-    const link = await anon.post('/api/convert', { source: 'youtube', playlist: 'https://www.youtube.com/playlist?list=PL1234567890abcdef' });
-    expect(link.status).toBe(401);
+    const anon = client();
+    expect((await anon.post('/api/convert', { source: 'spotify', playlist: 'https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M' })).status).toBe(401);
+    // YouTube needs no account, only the server's API key (not set in tests).
+    const yt = await anon.post('/api/convert', { source: 'youtube', playlist: 'https://www.youtube.com/playlist?list=PL1234567890abcdef' });
+    expect(yt.status).toBe(503);
+    expect(yt.body.error.code).toBe('needs_credentials');
   });
 
   it('rejects invalid requests and rate-limits heavy use', async () => {

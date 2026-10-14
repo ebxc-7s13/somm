@@ -77,8 +77,26 @@ export const importRoutes = new Hono<Env>()
     rateLimit(c, `convert:${user?.id ?? clientIp(c)}`, LIMITS.convert);
     const parsed = convertSchema.safeParse(await c.req.json());
     if (!parsed.success) throw new ApiError(400, 'invalid_input', 'The conversion request is not valid.', { issues: parsed.error.issues.slice(0, 5) });
-    const playlists = await convertPlaylists(parsed.data, user?.id ?? null, c.get('ctx').providers);
+    const { providers, fetchImpl } = c.get('ctx');
+    const playlists = await convertPlaylists(parsed.data, user?.id ?? null, providers, fetchImpl);
     return c.json({ playlists, stored: false });
+  })
+  // Complete converter rows (artist, album, year, genre, ISRC) from MusicBrainz. Nothing is stored.
+  .post('/convert/match', async (c) => {
+    const user = c.get('user');
+    rateLimit(c, `match:${user?.id ?? clientIp(c)}`, LIMITS.convertMatch);
+    const { matcher } = c.get('ctx');
+    if (!matcher) {
+      throw new ApiError(503, 'matching_unavailable', 'Song matching uses MusicBrainz, which is not configured on this server (MUSICBRAINZ_CONTACT).');
+    }
+    const cell = (max: number) => z.string().max(max).default('');
+    const { rows } = z
+      .object({ rows: z.array(z.object({ title: cell(300), artist: cell(300), album: cell(300), year: cell(10), genre: cell(200), isrc: cell(20) })).min(1).max(5) })
+      .parse(await c.req.json());
+    const results = [];
+    // One at a time: MusicBrainz allows about one request per second.
+    for (const row of rows) results.push(await matcher.match(row));
+    return c.json({ results, source: { name: 'MusicBrainz', url: 'https://musicbrainz.org', licence: 'Core data CC0; genres and tags CC BY-NC-SA 3.0' } });
   })
 
   // -------------------------------------------------------------- imports

@@ -6,7 +6,7 @@
  * and XML input with DTDs/entities is rejected outright.
  */
 import { restoreCell } from '../../../shared/csv';
-import { cleanDisplayText, splitArtistList } from '../../../shared/normalize';
+import { cleanDisplayText, parseYouTubeTitle, splitArtistList } from '../../../shared/normalize';
 import { tagToAttribute } from '../../../shared/taxonomy';
 import type { AttributeCategory } from '../../../shared/types';
 import { IMPORT_LIMITS, ImportError, type ImportRowError, type RawEntry, type RawPlaylist } from '../types';
@@ -294,6 +294,49 @@ export function parseText(text: string, name = 'Pasted list'): RawPlaylist {
     }
     throw new ImportError('No tracks found. Paste one “Artist - Title” per line.', 'empty');
   }
+  return { name: field(name) || 'Pasted list', provider: 'text', entries, errors, notes: [] };
+}
+
+/**
+ * Converter only: one song per line, forgiving. "Artist - Title", video titles
+ * ("Artist - Song (Official Video)"), quoted "Title" by Artist, "Title<TAB>Artist"
+ * and plain song titles are all kept; title-only rows wait for an artist, which
+ * the converter's song matching can fill in. Track numbers and durations copied
+ * along with the names are skipped.
+ */
+export function parseNameList(text: string, name = 'Pasted list'): RawPlaylist {
+  assertSize(text);
+  if (looksLikeTable(text)) return parseCsv(text.trimStart(), name);
+  const entries: RawEntry[] = [];
+  const errors: ImportRowError[] = [];
+  text.split(/\r?\n/).forEach((rawLine, i) => {
+    const line = rawLine.replace(/^\s*(?:\d+[.)]\s+|[-*•]\s+)/, '').trim();
+    if (!line || line.startsWith('#') || /^\d+$/.test(line) || /^\d{1,2}:\d{2}(?::\d{2})?$/.test(line)) return;
+    const quoted = line.match(/^["“](.+?)["”]\s+by\s+(.+)$/i);
+    const tabbed = line.match(/^([^\t]+)\t+([^\t]+)$/);
+    const pair = quoted ? { title: quoted[1]!, artist: quoted[2]! } : tabbed ? { title: tabbed[1]!, artist: tabbed[2]! } : null;
+    if (pair) {
+      const title = field(pair.title);
+      const artists = splitArtistList(pair.artist);
+      if (title && artists.length) {
+        entries.push({ row: i + 1, title, artists, parseConfidence: 'medium' });
+        return;
+      }
+    }
+    const parsed = parseYouTubeTitle(line, null);
+    const title = field(parsed.title);
+    if (!title) {
+      errors.push({ row: i + 1, message: 'Could not read a song name on this line.' });
+      return;
+    }
+    entries.push(
+      parsed.artist
+        ? { row: i + 1, title, artists: splitArtistList(parsed.artist), parseConfidence: 'medium' }
+        : { row: i + 1, title, artists: [], parseConfidence: 'low', warnings: ['Song title only — add the artist or use “Find song details”.'] },
+    );
+  });
+  if (entries.length > IMPORT_LIMITS.maxEntries) throw new ImportError(`Lists are limited to ${IMPORT_LIMITS.maxEntries} songs.`, 'too_large', 413);
+  if (entries.length === 0) throw new ImportError('No song names found. Paste one song per line.', 'empty');
   return { name: field(name) || 'Pasted list', provider: 'text', entries, errors, notes: [] };
 }
 

@@ -8,7 +8,9 @@ import type { ProviderId } from '../../shared/types';
 import { classifyEntries, ensureGenre, resolveTrack, type PreviewEntry } from '../catalog';
 import { all, get, newId, nowIso, run, tx, type DB } from '../db';
 import { ProviderError } from '../http';
-import { parseCsv, parseJson, parseJsonPlaylists, parseM3u, parseManual, parseText, parseXspf } from '../import/adapters/files';
+import type { FetchLike } from '../http';
+import { parseCsv, parseJson, parseJsonPlaylists, parseM3u, parseManual, parseNameList, parseText, parseXspf } from '../import/adapters/files';
+import { looksLikeLinkList, resolveLinkList } from '../import/adapters/oembed';
 import { toConverted, type ConvertedPlaylist } from '../import/convert';
 import { parseAppleMusicPlaylist, parseSpotifyPlaylist, parseYouTubePlaylist } from '../import/adapters/urls';
 import { ImportError, type RawPlaylist } from '../import/types';
@@ -91,11 +93,23 @@ export type ConvertInput = z.infer<typeof convertSchema>;
 
 /**
  * Reads a playlist source and returns SOMM CSV rows — one playlist per playlist
- * in the source. Nothing is stored. Link sources need a signed-in user.
+ * in the source. Nothing is stored. Pasted lists are read forgivingly (song names
+ * without artists are kept; track links are named through oEmbed). YouTube
+ * playlist links work without an account; Spotify and Apple Music need one.
  */
-export async function convertPlaylists(input: ConvertInput, userId: string | null, providers: ProviderService): Promise<ConvertedPlaylist[]> {
+export async function convertPlaylists(
+  input: ConvertInput,
+  userId: string | null,
+  providers: ProviderService,
+  fetchImpl?: FetchLike,
+): Promise<ConvertedPlaylist[]> {
   if (input.source === 'json') return parseJsonPlaylists(input.content, input.fileName ?? 'Imported JSON', CONVERT_MAX_JSON_BYTES).map(toConverted);
-  if ('playlist' in input && !userId) throw new ImportError('Sign in to convert a playlist link.', 'needs_connection', 401);
+  if (input.source === 'text') {
+    const name = input.name ?? 'Pasted list';
+    if (looksLikeLinkList(input.content)) return [toConverted(await resolveLinkList(input.content, name, fetchImpl))];
+    return [toConverted(parseNameList(input.content, name))];
+  }
+  if ('playlist' in input && input.source !== 'youtube' && !userId) throw new ImportError('Sign in to convert a Spotify or Apple Music playlist link.', 'needs_connection', 401);
   try {
     return [toConverted(await readSource(input, userId ?? '', providers))];
   } catch (err) {

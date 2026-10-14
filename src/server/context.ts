@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import type { AppConfig } from './config';
 import type { DB } from './db';
+import type { SongMatcher } from './enrich/matcher';
 import type { MusicBrainzClient } from './enrich/musicbrainz';
 import type { EnrichmentQueue } from './enrich/queue';
 import type { FetchLike } from './http';
@@ -15,6 +16,8 @@ export interface AppContext {
   providers: ProviderService;
   queue: EnrichmentQueue;
   musicbrainz: MusicBrainzClient | null;
+  /** Converter song matching (MusicBrainz); null when MusicBrainz is not configured. */
+  matcher: SongMatcher | null;
   hub: RealtimeHub;
   limiter: SlidingWindowLimiter;
   fetchImpl?: FetchLike;

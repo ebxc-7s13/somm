@@ -5,6 +5,7 @@ import type { AppConfig } from './config';
 import { ApiError, type AppContext, type Env } from './context';
 import { openDatabase, type DB } from './db';
 import { ItunesClient } from './enrich/itunes';
+import { SongMatcher } from './enrich/matcher';
 import { MusicBrainzClient } from './enrich/musicbrainz';
 import { EnrichmentQueue } from './enrich/queue';
 import type { FetchLike } from './http';
@@ -59,6 +60,7 @@ export async function createAppContext(config: AppConfig, options: ContextOption
     providers: new ProviderService(db, config, options.fetchImpl),
     queue,
     musicbrainz,
+    matcher: musicbrainz ? new SongMatcher(musicbrainz) : null,
     hub: new RealtimeHub(db, config, options.ringTimeoutMs),
     limiter: new SlidingWindowLimiter(),
     fetchImpl: options.fetchImpl,

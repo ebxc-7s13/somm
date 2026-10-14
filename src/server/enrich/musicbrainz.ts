@@ -107,6 +107,13 @@ export class MusicBrainzClient {
     return (data.recordings ?? []).filter((r) => (r.score ?? 0) >= 60);
   }
 
+  /** Recordings whose title matches (any artist). Used when only a song title is known. */
+  async searchTitle(title: string, limit = 25): Promise<MbRecordingSummary[]> {
+    const query = `recording:"${luceneEscape(title.trim()).slice(0, 200)}"`;
+    const data = await this.get<{ recordings?: MbRecordingSummary[] }>(`/recording?query=${encodeURIComponent(query)}&limit=${limit}`);
+    return data.recordings ?? [];
+  }
+
   async lookupIsrc(isrc: string): Promise<MbRecordingSummary[]> {
     try {
       const data = await this.get<{ recordings?: MbRecordingSummary[] }>(`/isrc/${encodeURIComponent(isrc)}?inc=artist-credits`);

@@ -122,9 +122,45 @@ can check and fix every song, download the file, and import that same file:
 
 A test proves the round trip: converted rows → CSV → import preview yields the same songs and fields.
 
-Bare Spotify or YouTube links (copied out of the apps) contain no song names. SOMM does not scrape pages, so the
-converter explains how to export instead (Spotify: *Download your data* or Exportify; Apple Music: *Export
-Playlist*; YouTube: the API-key provider or “Artist - Title” lines).
+### Pasted names and links
+
+The converter reads pasted lists forgivingly (the import page stays strict): “Artist - Title”, video titles such as
+“Artist - Song (Official Video) [4K]” (cleaned), quoted “Title” by Artist, Title⇥Artist, and plain song titles. Track
+numbers and durations copied with the names are skipped. Rows without an artist are kept for song matching.
+
+A list of track links is turned into names through each service's official **oEmbed** endpoint (public, no key;
+checked 2026-10-14 that none of the oEmbed paths is disallowed by the services' robots.txt), up to 300 links at a time:
+
+| Link | What oEmbed gives | Result |
+| --- | --- | --- |
+| Spotify track (`open.spotify.com/track/…`, `spotify:track:…`) | song title only | title-only row (artist via matching or typed) |
+| YouTube / YouTube Music video | video title + channel | artist and title parsed as for YouTube imports |
+| SoundCloud track | “Title by Uploader” + uploader | title; artist from “Artist - Title” or the uploader (flagged) |
+| Spotify playlist/album, YouTube playlist, SoundCloud set | nothing (oEmbed never lists contents) | an explanation: copy the track links instead (Spotify app: Ctrl+A, Ctrl+C), or use the YouTube playlist option |
+
+SOMM does not use YouTube's playlist RSS feed: `robots.txt` on youtube.com disallows `/feeds/videos.xml`, and pages
+are never scraped.
+
+### Find song details (MusicBrainz)
+
+`POST /api/convert/match` (no account; up to 5 rows per request, 120 requests per hour per user or IP) completes rows
+from MusicBrainz and returns, per row, the fields it can fill, a status and the recording's MusicBrainz page. The
+page sends rows in batches with a progress bar and a Stop button; only empty cells are filled.
+
+* **Title + artist:** recording search with title and artist; candidates must share the title (version suffixes such
+  as “(Official Video)” are ignored) and credit the artist. A multi-artist credit (“A, B”) is retried with its first
+  name. Among matches, the recording that appears on the most releases is taken as the original; its earliest studio
+  album/single/EP gives the album. Status `matched`.
+* **Title only:** MusicBrainz search has no popularity ranking, and popular titles have hundreds of covers (verified
+  live: the original “Blinding Lights” is not among the first 100 title-only results). The artist is therefore filled
+  in only when every strong match shares one artist (status `check`); otherwise the row is marked `needs_artist`.
+* **Genre:** MusicBrainz's curated recording genres, else the artist's genres (`weightGenres`, top 3). Free-form tags
+  are not used — they are noisy (the same original is tagged “jazz” and “trance”).
+* Year (first release date) and ISRC are filled when empty. Lookups are cached in memory only; nothing the listener
+  converts is stored. The shared MusicBrainz client keeps to about one request per second for the whole server.
+
+In production the MusicBrainz contact defaults to the project page (`PROJECT_URL` in `src/server/config.ts`) when
+`MUSICBRAINZ_CONTACT` is not set, so matching and import enrichment work without a personal email.
 
 ## Import workflow
 
