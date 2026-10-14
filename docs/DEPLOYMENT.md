@@ -46,6 +46,18 @@ fictional demo listeners and Trees are seeded once, in the background after star
 service’s own `https://…onrender.com` URL and client IPs are read from `X-Forwarded-For` automatically on Render. Set
 `PUBLIC_URL` explicitly if you add a custom domain.
 
+**Deploying new commits.** A service created from the public repository URL (without connecting Render to GitHub)
+does not redeploy on push. CI deploys instead, and only after every check passes on `main`:
+
+1. Render → the `soundofmymind` service → **Settings → Deploy Hook** → copy the URL. Treat it as a secret: anyone
+   with it can start a deploy.
+2. GitHub → repository **Settings → Secrets and variables → Actions → New repository secret**, name
+   `RENDER_DEPLOY_HOOK_URL`, paste the URL.
+
+The `Deploy to Render` job in `.github/workflows/ci.yml` then calls the hook and waits until `/api/health` reports the
+new commit (Render sets `RENDER_GIT_COMMIT`; the health endpoint returns its first 7 characters as `commit`). Without
+the secret the job only leaves a notice. For a one-off update, use **Manual Deploy → Deploy latest commit** on Render.
+
 Free-plan behaviour to expect: the service sleeps after 15 minutes without requests, and the next visit waits about a
 minute while it wakes; WebSocket connections drop when it sleeps and the client reconnects. Render’s free instances
 have no persistent disk, which is why all data lives in Postgres.

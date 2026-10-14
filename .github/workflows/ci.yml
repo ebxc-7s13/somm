@@ -30,3 +30,45 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  deploy:
+    name: Deploy to Render
+    # Only tested commits on main reach the live site.
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - name: Trigger the Render deploy hook
+        id: trigger
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice::RENDER_DEPLOY_HOOK_URL is not set, so this commit was not deployed. See docs/DEPLOYMENT.md (Render deploy hook)."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK" > /dev/null
+          echo "Deploy requested for ${GITHUB_SHA::7}."
+
+      - name: Wait until the live site runs this commit
+        if: steps.trigger.outputs.skipped != 'true'
+        env:
+          APP_URL: ${{ vars.SOMM_APP_URL }}
+        run: |
+          want="${GITHUB_SHA::7}"
+          for i in $(seq 1 44); do
+            live=$(curl -s -m 60 "$APP_URL/api/health" | sed -n 's/.*"commit":"\([0-9a-f]*\)".*/\1/p')
+            if [ "$live" = "$want" ]; then
+              echo "Live at $APP_URL with commit $live."
+              exit 0
+            fi
+            echo "Live commit: ${live:-unknown}; waiting for $want…"
+            sleep 30
+          done
+          echo "::error::$APP_URL did not report commit $want within about 22 minutes. Check the deploy log on Render."
+          exit 1
