@@ -95,13 +95,14 @@ jobs:
           # Capture first so a failed verification fails the step (a pipe would hide its exit code).
           CERTS=$("$ANDROID_HOME"/build-tools/$(ls "$ANDROID_HOME"/build-tools | sort -V | tail -1)/apksigner verify --print-certs "$APK")
           echo "$CERTS" | head -3
-          cp "$APK" "somm-${{ github.run_number }}.apk"
+          # A fixed file name keeps the "latest release" download link stable.
+          cp "$APK" somm-android.apk
           rm -f "$RUNNER_TEMP/somm-release.p12"
 
       - uses: actions/upload-artifact@v5
         with:
           name: somm-android-${{ github.run_number }}
-          path: somm-${{ github.run_number }}.apk
+          path: somm-android.apk
           retention-days: 30
 
       - name: Publish as a GitHub release
@@ -109,7 +110,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "android-${{ github.run_number }}" "somm-${{ github.run_number }}.apk" \
-            --target "${{ github.sha }}" \
+          gh release create "android-${{ github.run_number }}" somm-android.apk \
+            --target "${{ github.sha }}" --latest \
             --title "SOMM for Android (build ${{ github.run_number }})" \
             --notes "Signed APK of the SOMM Android app. It opens ${SOMM_APP_URL}. Install by opening the APK on your phone and allowing installs from your browser or file manager when Android asks."

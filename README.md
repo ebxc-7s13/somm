@@ -33,6 +33,12 @@ npm run build && npm start   # serves API + WebSocket + built client from one No
 
 ## Use it as an app
 
+**Android:** download the latest signed APK — <https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk> — open it on your phone and allow the install when
+Android asks. The app opens <https://soundofmymind.onrender.com>; on the free plan the server sleeps when idle, so the
+first visit can take about a minute while it wakes.
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ebxc-7s13/somm)
+
 * **Free hosting:** a Render Blueprint ([`render.yaml`](render.yaml)) runs the web app on Render’s free plan with a
   free Neon PostgreSQL database. Step by step: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 * **Install from the browser:** SOMM is a Progressive Web App — use “Install app” (Chrome, Edge, Android) or

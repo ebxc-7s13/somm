@@ -36,7 +36,9 @@ The repository contains a Blueprint, [`render.yaml`](../render.yaml): one free w
 2. **New → Blueprint**, pick the repository, and apply `render.yaml`.
 3. When asked, paste the Neon connection string into `DATABASE_URL`. Leave `MUSICBRAINZ_CONTACT` empty or set an
    email/URL where MusicBrainz can reach you (it enables genre/credit enrichment).
-4. Wait for the first deploy, then open `https://<service>.onrender.com/api/health`.
+4. Wait for the first deploy, then open `https://soundofmymind.onrender.com/api/health`. The service name in
+   `render.yaml` (`soundofmymind`) sets that address, and the Android app is built to open it. If Render reports the
+   name as taken, it adds a suffix: then set `SOMM_APP_URL` to the address Render shows and rebuild the APK.
 
 What the Blueprint sets: `NODE_ENV=production`, `HOST=0.0.0.0`, `NODE_VERSION=22`, a generated
 `TOKEN_ENCRYPTION_KEY` (256-bit, created once by Render), `DEMO_MODE_ENABLED=true` and `SEED_DEMO_ON_START=true` (the
@@ -71,13 +73,15 @@ The workflow [`.github/workflows/android.yml`](../.github/workflows/android.yml)
 
 | Setting | Kind | Value |
 | --- | --- | --- |
-| `SOMM_APP_URL` | repository **variable** | the Render URL, e.g. `https://somm.onrender.com` (https origin, no path) |
+| `SOMM_APP_URL` | repository **variable** | the Render URL, `https://soundofmymind.onrender.com` (https origin, no path) |
 | `SOMM_KEYSTORE_BASE64` | repository **secret** | base64 of the PKCS#12 release keystore (alias `somm`) |
 | `SOMM_KEYSTORE_PASSWORD` | repository **secret** | the keystore password |
 
 It installs JDK 21 and the Android build tools on GitHub’s runner, syncs the shell, builds `assembleRelease` signed
 with the keystore, verifies the signature with `apksigner`, uploads the APK as a workflow artifact and publishes it as
-a GitHub Release (`android-<run number>`). The version code is the run number, so each APK installs over the last one.
+a GitHub Release (`android-<run number>`) whose asset is always named `somm-android.apk`, so
+<https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk> always serves the newest build. The version code is the run number, so each APK
+installs over the last one.
 It runs on demand (**Actions → Android APK → Run workflow**) and on pushes that change the Android shell. A manual
 run can override the URL and skip publishing, which is useful for checking the pipeline.
 
@@ -93,7 +97,7 @@ gh secret set SOMM_KEYSTORE_PASSWORD
 ```
 
 Installing: open the release on the phone, download the `.apk`, and allow your browser or file manager to install
-apps when Android asks. While the repository is private, only people with access to it can download releases.
+apps when Android asks. The repository is public, so anyone can download releases without a GitHub account.
 
 Local alternative (needs Android Studio): `npm run mobile:sync`, then open `android/` in Android Studio.
 

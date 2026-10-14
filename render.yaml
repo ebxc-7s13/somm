@@ -3,7 +3,8 @@
 # Render's free instances have no persistent disk. See docs/DEPLOYMENT.md.
 services:
   - type: web
-    name: somm
+    # The name sets the address: https://soundofmymind.onrender.com (the Android app opens it).
+    name: soundofmymind
     runtime: node
     plan: free
     # Same region as the Neon database (AWS ap-southeast-1) to keep queries fast.
