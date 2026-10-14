@@ -147,10 +147,18 @@ are never scraped.
 from MusicBrainz and returns, per row, the fields it can fill, a status and the recording's MusicBrainz page. The
 page sends rows in batches with a progress bar and a Stop button; only empty cells are filled.
 
-* **Title + artist:** recording search with title and artist; candidates must share the title (version suffixes such
-  as “(Official Video)” are ignored) and credit the artist. A multi-artist credit (“A, B”) is retried with its first
-  name. Among matches, the recording that appears on the most releases is taken as the original; its earliest studio
-  album/single/EP gives the album. Status `matched`.
+* **Title + artist:** recording search (100 results — classic songs have hundreds of recordings) with title and
+  artist; SOMM itself checks that each candidate has the same title (“(Official Video)”, “(4K Remaster)” etc. are
+  ignored) and credits the artist, so low search scores are accepted (a duet credited “A & B” scores below A's later
+  solo re-recording). A multi-artist credit (“A, B”) is retried with its first name. The **original** is chosen by
+  leaving out music videos and other versions (live, remix, acoustic, instrumental…, unless the listener's title names
+  one), then taking the **earliest release year**, and within that year the recording found on the most releases
+  (year-only dates on obscure compilations would otherwise win). Its earliest album, single, EP or soundtrack (film
+  songs live on soundtracks) gives the album. Status `matched`.
+* Checked live on 2026-10-14 against MusicBrainz: Blinding Lights (2019 single, synth-pop), Die With a Smile (2024
+  duet single), Shape of You (2017 single), Bohemian Rhapsody (*A Night at the Opera*, 1975), Never Gonna Give You Up
+  (*Whenever You Need Somebody*, 1987), Kesariya and Tum Hi Ho (their film soundtracks), APT. (2024 single) all
+  matched the original recording with an ISRC.
 * **Title only:** MusicBrainz search has no popularity ranking, and popular titles have hundreds of covers (verified
   live: the original “Blinding Lights” is not among the first 100 title-only results). The artist is therefore filled
   in only when every strong match shares one artist (status `check`); otherwise the row is marked `needs_artist`.

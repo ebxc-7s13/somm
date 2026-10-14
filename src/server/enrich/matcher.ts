@@ -33,12 +33,23 @@ export interface MatchResult {
 }
 
 interface SearchHit extends MbRecordingSummary {
+  /** MusicBrainz marks music-video recordings. */
+  video?: boolean;
+  /** e.g. "live, 2024-08-27: Dolby Live" */
+  disambiguation?: string;
   isrcs?: string[];
   releases?: { title: string; date?: string; 'release-group'?: { 'primary-type'?: string; 'secondary-types'?: string[] } }[];
 }
 
 const CACHE_LIMIT = 3000;
+/** Title-only search: only strong hits count as evidence of who owns a title. */
 const MIN_SCORE = 85;
+/**
+ * Title + artist: SOMM verifies both itself, so weaker search scores are fine — a
+ * duet credited "A & B" scores lower than A's solo re-recording when searching for A.
+ */
+const MIN_SCORE_WITH_ARTIST = 50;
+const VARIANT = /\b(live|demo|remix|mix|acoustic|instrumental|karaoke|edit|session|rehearsal|cover|sped up|slowed|reprise|a cappella)\b/i;
 
 export class SongMatcher {
   private cache = new Map<string, Promise<unknown>>();
@@ -63,7 +74,8 @@ export class SongMatcher {
   private search(title: string, artist: string | null): Promise<SearchHit[]> {
     const key = `s:${normalizeText(title)}|${normalizeText(artist ?? '')}`;
     return this.cached(key, async () =>
-      artist ? ((await this.mb.searchRecording(title, artist, 15)) as SearchHit[]) : ((await this.mb.searchTitle(title, 25)) as SearchHit[]),
+      // Classic songs have hundreds of recordings (live, remasters, compilations); 100 is MusicBrainz's maximum per request.
+      artist ? ((await this.mb.searchRecording(title, artist, 100)) as SearchHit[]) : ((await this.mb.searchTitle(title, 25)) as SearchHit[]),
     );
   }
 
@@ -80,8 +92,9 @@ export class SongMatcher {
     if (!title) return { status: 'not_found', fill: {}, url: null, message: 'This row has no title.' };
     const primaryArtist = row.artist.split(';')[0]?.trim() ?? '';
     const nt = normalizeText(title);
-    const sameTitle = (hits: SearchHit[]) =>
-      hits.filter((h) => (h.score ?? 100) >= MIN_SCORE && normalizeText(parseTitle(h.title).baseTitle || h.title) === nt);
+    const wantVersion = parseTitle(row.title).version;
+    const sameTitle = (hits: SearchHit[], minScore: number) =>
+      hits.filter((h) => (h.score ?? 100) >= minScore && normalizeText(parseTitle(h.title).baseTitle || h.title) === nt);
     try {
       let pick: SearchHit | null = null;
       let status: MatchStatus = 'matched';
@@ -90,21 +103,21 @@ export class SongMatcher {
         const first = primaryArtist.split(/\s*(?:,|&|\sx\s|\sand\s)\s*/i)[0]?.trim() ?? '';
         for (const artist of [...new Set([primaryArtist, first].filter(Boolean))]) {
           const na = normalizeText(artist);
-          const byArtist = sameTitle(await this.search(title, artist)).filter((h) =>
+          const byArtist = sameTitle(await this.search(title, artist), MIN_SCORE_WITH_ARTIST).filter((h) =>
             (h['artist-credit'] ?? []).some((c) => normalizeText(c.name) === na || normalizeText(c.artist.name) === na || normalizeText(creditName(h)) === na),
           );
-          pick = mostReleased(byArtist);
+          pick = original(byArtist, wantVersion);
           if (pick) break;
         }
         if (!pick) return { status: 'not_found', fill: {}, url: null, message: `MusicBrainz has no “${title}” by ${primaryArtist}. Check the spelling of both.` };
       } else {
-        const candidates = sameTitle(await this.search(title, null));
+        const candidates = sameTitle(await this.search(title, null), MIN_SCORE).filter((h) => !h.video);
         const artists = new Set(candidates.map((h) => normalizeText(creditName(h))));
         if (candidates.length === 0) return { status: 'not_found', fill: {}, url: null, message: `No song called “${title}” was found. Add the artist and try again.` };
         if (artists.size > 1) {
           return { status: 'needs_artist', fill: {}, url: null, message: `${artists.size}+ artists have a song called “${title}”. Type the artist, then find details again.` };
         }
-        pick = mostReleased(candidates);
+        pick = original(candidates, wantVersion);
         status = 'check';
       }
       if (!pick) return { status: 'not_found', fill: {}, url: null, message: 'No match found.' };
@@ -140,11 +153,24 @@ function creditName(h: MbRecordingSummary, joiner = ', '): string {
   return (h['artist-credit'] ?? []).map((c) => c.name).join(joiner);
 }
 
-/** The original release of a song appears on the most releases (albums, singles, compilations). */
-function mostReleased(hits: SearchHit[]): SearchHit | null {
+/**
+ * The original recording among one artist's recordings of a title: leave out music
+ * videos, other versions (live, remix, acoustic, instrumental…) unless the listener's
+ * title names one, then take the earliest release year (re-recordings and deluxe
+ * masters come later); within a year, the recording found on the most releases —
+ * year-only dates on obscure compilations would otherwise sort before full dates.
+ */
+function original(hits: SearchHit[], wantVersion: string | null): SearchHit | null {
+  const audio = hits.filter((h) => !h.video);
+  const sameVersion = audio.filter((h) => parseTitle(h.title).version === wantVersion);
+  const versioned = sameVersion.length ? sameVersion : audio;
+  const plain = versioned.filter((h) => !VARIANT.test(h.disambiguation ?? ''));
+  const pool = plain.length ? plain : versioned;
+  const year = (h: SearchHit) => (h['first-release-date'] || '9999').slice(0, 4);
   return (
-    [...hits].sort(
+    [...pool].sort(
       (a, b) =>
+        year(a).localeCompare(year(b)) ||
         (b.releases?.length ?? 0) - (a.releases?.length ?? 0) ||
         (a['first-release-date'] || '9999').localeCompare(b['first-release-date'] || '9999') ||
         a.id.localeCompare(b.id),
@@ -152,10 +178,14 @@ function mostReleased(hits: SearchHit[]): SearchHit | null {
   );
 }
 
-/** Prefer the earliest studio album, single or EP over compilations and live releases. */
+/** Prefer the earliest album, single, EP or soundtrack (film songs live on soundtracks) over compilations and live releases. */
 function albumOf(h: SearchHit): string | null {
   const releases = h.releases ?? [];
-  const studio = releases.filter((r) => ['Album', 'Single', 'EP'].includes(r['release-group']?.['primary-type'] ?? '') && !(r['release-group']?.['secondary-types']?.length));
+  const studio = releases.filter(
+    (r) =>
+      ['Album', 'Single', 'EP'].includes(r['release-group']?.['primary-type'] ?? '') &&
+      (r['release-group']?.['secondary-types'] ?? []).every((t) => t === 'Soundtrack'),
+  );
   const pool = studio.length ? studio : releases;
   return [...pool].sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))[0]?.title ?? null;
 }

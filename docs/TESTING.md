@@ -7,7 +7,7 @@ npm run lint         # ESLint 10 + typescript-eslint
 npm run check        # typecheck + lint + test + build
 ```
 
-Last full run (2026-10-14, Windows 11, Node 22.23.2): **217 tests in 19 files, all passing**; typecheck and lint clean.
+Last full run (2026-10-14, Windows 11, Node 22.23.2): **219 tests in 19 files, all passing**; typecheck and lint clean.
 
 Database tests run real PostgreSQL SQL through **PGlite** (Postgres compiled to WebAssembly, in-process): nothing to
 install. `tests/global-setup.ts` migrates one database, dumps it, and caches the snapshot under
@@ -30,7 +30,7 @@ suite takes ~1.5 minutes; workers are capped at half the logical CPUs because th
 | `tests/ui/components.test.tsx` | 12 | landing copy/CTAs/taglines, demo network failure, map keyboard access + aria labels + selection + search + dimming, list alternative, offline error + retry, empty states, score ring + breakdown, library long names/coverage/version badges, network failure recovery, empty library |
 | `tests/unit/csv.test.ts` | 4 | CSV writer quoting/BOM/CRLF, formula neutralising and restoring, durations, file names, convert → CSV → import round trip (commas, quotes, several artists, formula-like titles, line breaks, attributes, links) |
 | `tests/integration/convert.test.ts` | 6 | converter without an account stores nothing (title-only lines kept); Spotify data export split per playlist (episodes skipped, local files read); Apple Music/iTunes export (paths ignored); import still explains bare Spotify links; Spotify links need sign-in, YouTube needs only the server key; validation and rate limit; converted CSV imports the same songs including an edited genre |
-| `tests/integration/convert-sources.test.ts` | 11 | song matching: title + artist (original release preferred, only empty fields filled, cache), multi-artist credits, artist-genre fallback, unique vs ambiguous titles, busy MusicBrainz, anonymous match API with 5-row limit, 503 when unconfigured, production contact default; forgiving name lists; link classification; Spotify/YouTube/SoundCloud links via oEmbed with playlist-link guidance and removed videos; YouTube playlists without an account |
+| `tests/integration/convert-sources.test.ts` | 12 | song matching: title + artist (original recording chosen over later re-recordings, live/instrumental/video versions and year-only compilations; soundtracks as albums; only empty fields filled, cache), multi-artist credits, artist-genre fallback, unique vs ambiguous titles, busy MusicBrainz, anonymous match API with 5-row limit, 503 when unconfigured, production contact default; forgiving name lists; link classification; Spotify/YouTube/SoundCloud links via oEmbed with playlist-link guidance and removed videos; YouTube playlists without an account |
 | `tests/ui/convert.test.tsx` | 4 | paste → convert → flag incomplete row → edit genre → download (file contents checked) → hand-off to import via sign-in; link tab guidance per service; Find song details batches, badges and fill-only-empty; UTF-16 and Windows-1252 file decoding |
 | `tests/ui/chat.test.tsx` | 3 | untrusted text not rendered as HTML, safe link attributes, hidden messages, length limit, realtime push, offline send keeps draft |
 | `tests/ui/contrast.test.ts` | 21 | WCAG AA (≥ 4.5:1) for 20 token pairs, brand palette values |

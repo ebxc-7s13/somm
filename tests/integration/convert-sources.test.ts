@@ -38,12 +38,37 @@ function musicBrainz(opts: { fail?: boolean } = {}) {
                 'artist-credit': [credit('Nova Lattice')],
                 releases: [release('Signals (Live)', '2021', 'Album', ['Live']), release('Signals', '2019-04-01'), release('Best Of', '2022', 'Album', ['Compilation'])],
               },
-              { id: 'rec-early', score: 99, title: 'Glass Orbit', 'artist-credit': [credit('Nova Lattice')], releases: [release('Glass Orbit', '2018', 'Single')] },
+              // Earlier, but a live recording and a music video: not the original.
+              { id: 'rec-live', score: 99, title: 'Glass Orbit', disambiguation: 'live, 2018-05-01', 'first-release-date': '2018-05-01', 'artist-credit': [credit('Nova Lattice')], releases: [release('Live 2018', '2018-05-01')] },
+              { id: 'rec-video', score: 98, title: 'Glass Orbit', video: true, 'first-release-date': '2017-01-01', 'artist-credit': [credit('Nova Lattice')], releases: [] },
+            ],
+          });
+        }
+        if (title === 'Silver Line' && artist === 'Ivy Marlowe') {
+          // Mirrors a real case: the later solo re-recording scores highest, the original duet scores 83.
+          return json({
+            recordings: [
+              { id: 'rec-solo-2025', score: 100, title: 'Silver Line', 'first-release-date': '2025-09-01', 'artist-credit': [credit('Ivy Marlowe')], releases: [release('Deluxe', '2025-09-01')] },
+              { id: 'rec-duet-live', score: 83, title: 'Silver Line', disambiguation: 'live, 2024-08-27', 'first-release-date': '2024-10-17', 'artist-credit': [credit('Ivy Marlowe'), credit('Kilo Ray')], releases: [] },
+              { id: 'rec-duet-instr', score: 78, title: 'Silver Line (instrumental)', 'first-release-date': '2024-08-20', 'artist-credit': [credit('Ivy Marlowe'), credit('Kilo Ray')], releases: [] },
+              // A compilation with only a year as its date must not beat the original from the same year.
+              { id: 'rec-comp', score: 90, title: 'Silver Line', 'first-release-date': '2024', 'artist-credit': [credit('Ivy Marlowe'), credit('Kilo Ray')], releases: [release('Club Hits Vol. 9', '2024', 'Album')] },
+              { id: 'rec-silver', score: 83, title: 'Silver Line', 'first-release-date': '2024-08-16', 'artist-credit': [credit('Ivy Marlowe'), credit('Kilo Ray')], releases: [release('Silver Line', '2024-08-16', 'Single'), release('Hits', '2025', 'Album', ['Compilation'])] },
             ],
           });
         }
         if (title === 'Paper Moons' && artist === 'Ivy Marlowe') {
-          return json({ recordings: [{ id: 'rec-duet', score: 100, title: 'Paper Moons', 'artist-credit': [credit('Ivy Marlowe'), credit('Kilo Ray')], releases: [release('Duets', '2020')] }] });
+          return json({
+            recordings: [
+              {
+                id: 'rec-duet',
+                score: 100,
+                title: 'Paper Moons',
+                'artist-credit': [credit('Ivy Marlowe'), credit('Kilo Ray')],
+                releases: [release('Best Of Ivy', '2023', 'Album'), release('Moonlight (Original Soundtrack)', '2020', 'Album', ['Soundtrack']), release('Live Duets', '2021', 'Album', ['Live'])],
+              },
+            ],
+          });
         }
         if (title === 'Quiet Engine' && !artist) {
           return json({
@@ -73,6 +98,10 @@ function musicBrainz(opts: { fail?: boolean } = {}) {
       respond: () => json({ id: 'rec-duet', title: 'Paper Moons', 'first-release-date': '2020', 'artist-credit': [credit('Ivy Marlowe'), credit('Kilo Ray')], genres: [], tags: [], isrcs: [], relations: [] }),
     },
     {
+      match: /\/ws\/2\/recording\/rec-silver/,
+      respond: () => json({ id: 'rec-silver', title: 'Silver Line', 'first-release-date': '2024-08-16', 'artist-credit': [credit('Ivy Marlowe'), credit('Kilo Ray')], genres: [{ name: 'soul', count: 2 }], tags: [], isrcs: [], relations: [] }),
+    },
+    {
       match: /\/ws\/2\/recording\/rec-qe1/,
       respond: () => json({ id: 'rec-qe1', title: 'Quiet Engine', 'first-release-date': '1964', 'artist-credit': [credit('Teo Vance')], genres: [{ name: 'hard bop', count: 2 }], tags: [], isrcs: [], relations: [] }),
     },
@@ -98,11 +127,19 @@ describe('song matching (MusicBrainz)', () => {
     expect((await matcher.match(row('Glass Orbit', 'Nova Lattice'))).fill.genre).toBe('synthwave; electronic');
   });
 
+  it('takes the earliest original over later re-recordings, live, instrumental and video versions', async () => {
+    const { client } = musicBrainz();
+    const r = await new SongMatcher(client).match(row('Silver Line', 'Ivy Marlowe'));
+    expect(r.url).toBe('https://musicbrainz.org/recording/rec-silver');
+    expect(r.fill).toMatchObject({ album: 'Silver Line', year: '2024-08-16', genre: 'soul' });
+  });
+
   it('tries the first artist of a multi-artist credit and falls back to artist genres', async () => {
     const { client } = musicBrainz();
     const r = await new SongMatcher(client).match(row('Paper Moons', 'Ivy Marlowe, Kilo Ray'));
     expect(r.status).toBe('matched');
-    expect(r.fill).toMatchObject({ album: 'Duets', year: '2020', genre: 'indie pop' });
+    // Film songs: the soundtrack is the original album.
+    expect(r.fill).toMatchObject({ album: 'Moonlight (Original Soundtrack)', year: '2020', genre: 'indie pop' });
   });
 
   it('fills the artist for a title only when one artist owns it, and asks otherwise', async () => {

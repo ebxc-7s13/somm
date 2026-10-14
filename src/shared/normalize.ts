@@ -168,7 +168,7 @@ export function fallbackTrackKey(title: string, primaryArtist: string, version: 
 }
 
 const YOUTUBE_NOISE =
-  /\s*[([](?:official(?: music)? (?:video|audio|visuali[sz]er|lyric video)|official|lyrics?|lyric video|audio|video|hd|hq|4k|visuali[sz]er|music video|mv|explicit)[)\]]/gi;
+  /\s*[([](?:official(?: music)? (?:video|audio|visuali[sz]er|lyric video)|official|lyrics?|lyric video|audio|video|(?:4k|hd|hq)(?: (?:remaster(?:ed)?|video|upgrade))?|remastered in (?:4k|hd)|visuali[sz]er|music video|mv|explicit)[)\]]/gi;
 
 /**
  * Best-effort split of a YouTube video title into artist and title.

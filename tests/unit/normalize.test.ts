@@ -68,6 +68,14 @@ describe('parseYouTubeTitle', () => {
     });
   });
 
+  it('drops video-quality tags, which are not audio versions', () => {
+    for (const tag of ['(4K Remaster)', '[HD Remastered]', '(Remastered in 4K)', '(HQ Video)']) {
+      expect(parseYouTubeTitle(`Nova Lattice - Glass Orbit ${tag}`, null).title).toBe('Glass Orbit');
+    }
+    // A real audio remaster stays a version.
+    expect(parseTitle('Glass Orbit (2011 Remaster)').version).toBe('remaster');
+  });
+
   it('uses "- Topic" channels as the artist', () => {
     expect(parseYouTubeTitle('Glass Orbit', 'Nova Lattice - Topic')).toEqual({ artist: 'Nova Lattice', title: 'Glass Orbit', confidence: 'medium' });
   });
