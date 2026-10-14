@@ -1,0 +1,10 @@
+{
+  "name": "SOMM — Sound of My Mind",
+  "short_name": "SOMM",
+  "description": "Map your music. Discover your sound. Find your people.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#071A52",
+  "theme_color": "#071A52",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

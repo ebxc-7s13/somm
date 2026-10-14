@@ -1,0 +1,60 @@
+{
+  "name": "somm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SOMM — Sound of My Mind. A music-intelligence and community platform: import playlists, map your musical identity, find your Tree.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "tsx watch --clear-screen=false src/server/index.ts",
+    "dev:client": "vite",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "esbuild src/server/index.ts --bundle --platform=node --format=esm --target=node22 --packages=external --outfile=dist/server/index.js && node scripts/copy-migrations.mjs",
+    "start": "node --disable-warning=ExperimentalWarning dist/server/index.js",
+    "db:migrate": "tsx src/server/db/migrate-cli.ts",
+    "seed:demo": "tsx src/server/seed/demo-cli.ts",
+    "trees:generate": "tsx src/server/seed/trees-cli.ts",
+    "smoke:metadata": "tsx src/server/seed/smoke-cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/sora": "^5.3.0",
+    "@hono/node-server": "^2.1.5",
+    "hono": "^4.13.13",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.1.2",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "jsdom": "^30.1.2",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  }
+}
