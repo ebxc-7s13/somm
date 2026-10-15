@@ -9,6 +9,9 @@ export default defineConfig({
     outDir: 'dist/client',
     emptyOutDir: true,
     sourcemap: false,
+    // Fonts are always separate files: the Content Security Policy allows fonts only from
+    // this origin, so a small font subset inlined as a data: URI would be blocked.
+    assetsInlineLimit: (filePath) => (/\.(woff2?|ttf|otf)$/i.test(filePath) ? false : undefined),
   },
   server: {
     // Bind to the IPv4 loopback explicitly: on Windows "localhost" may resolve to ::1 only,

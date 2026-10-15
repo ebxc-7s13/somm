@@ -89,6 +89,18 @@ describe('repository hygiene', () => {
     }
   });
 
+  it('ships fonts as files, as the Content Security Policy (font-src self) requires', async () => {
+    const { default: viteConfig } = await import('../../vite.config');
+    const inline = viteConfig.build?.assetsInlineLimit;
+    expect(typeof inline).toBe('function');
+    const decide = inline as (file: string, content: Buffer) => boolean | undefined;
+    for (const font of ['a/unbounded-cyrillic-ext-wght-normal.woff2', 'b/inter.woff', 'c/x.ttf']) expect(decide(font, Buffer.alloc(10))).toBe(false);
+    expect(decide('d/icon.svg', Buffer.alloc(10))).toBeUndefined();
+    const dir = join(root, 'dist', 'client', 'assets');
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir).filter((n) => n.endsWith('.css'))) expect(read(join(dir, name)), name).not.toContain('url(data:font');
+  });
+
   it('has clean UTF-8 sources (no double-encoded characters or stray BOMs)', () => {
     // Built from char codes so this file stays ASCII: U+00E2 U+20AC, or U+00C3 followed by U+0080..U+00BF.
     const c = String.fromCharCode;

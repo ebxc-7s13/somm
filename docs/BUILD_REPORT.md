@@ -267,7 +267,9 @@ with consented engagement data; add Playwright tests; deploy behind HTTPS with b
   navigation, and multi-playlist CSVs split into one CSV per playlist in the converter.
 * **Data retention:** the redesign changes no database schema; existing accounts, playlists, maps and Tree
   memberships in the Neon database are untouched.
-* Tests: 251 passing in 21 files (new map engine, poster, map page and CSV-split tests).
+* Tests: 252 passing in 21 files (new map engine, poster, map page, CSV-split and font-policy tests).
+* A live check after deploying found a small font subset inlined as a `data:` URI, which the Content Security Policy
+  blocks; fonts are now always emitted as files.
 
 ## 19. Git status
 

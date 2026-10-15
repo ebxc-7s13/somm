@@ -7,7 +7,7 @@ npm run lint         # ESLint 10 + typescript-eslint
 npm run check        # typecheck + lint + test + build
 ```
 
-Last full run (2026-10-15, Windows 11, Node 22.23.2): **251 tests in 21 files, all passing**; typecheck and lint clean.
+Last full run (2026-10-15, Windows 11, Node 22.23.2): **252 tests in 21 files, all passing**; typecheck and lint clean.
 
 Database tests run real PostgreSQL SQL through **PGlite** (Postgres compiled to WebAssembly, in-process): nothing to
 install. `tests/global-setup.ts` migrates one database, dumps it, and caches the snapshot under
@@ -36,7 +36,7 @@ suite takes ~1.5 minutes; workers are capped at half the logical CPUs because th
 | `tests/ui/convert.test.tsx` | 4 | paste → convert → flag incomplete row → edit genre → download (file contents checked) → hand-off to import via sign-in; link tab guidance per service; Find song details batches, badges and fill-only-empty; UTF-16 and Windows-1252 file decoding |
 | `tests/ui/chat.test.tsx` | 3 | untrusted text not rendered as HTML, safe link attributes, hidden messages, length limit, realtime push, offline send keeps draft |
 | `tests/ui/contrast.test.ts` | 25 | WCAG AA (≥ 4.5:1) for 24 token pairs (including the cyan, violet and magenta accents), brand palette values |
-| `tests/security/repository.test.ts` | 8 | .gitignore coverage (incl. signing keys), no keystores in the tree, no database URL in `render.yaml`, placeholder-only .env.example, no secret-looking values, no server secrets or `dangerouslySetInnerHTML` in client code, built bundle free of server config, clean UTF-8 |
+| `tests/security/repository.test.ts` | 9 | .gitignore coverage (incl. signing keys), no keystores in the tree, no database URL in `render.yaml`, placeholder-only .env.example, no secret-looking values, no server secrets or `dangerouslySetInnerHTML` in client code, built bundle free of server config, fonts shipped as files (the CSP blocks `data:` fonts), clean UTF-8 |
 | `tests/unit/service-worker.test.ts` | 4 | `public/sw.js` in a sandbox: never intercepts `/api`, `/ws`, cross-origin or non-GET requests; network-first pages with an offline page; cache-first hashed assets; only the public shell precached; old caches removed |
 
 ## Mocks vs live
