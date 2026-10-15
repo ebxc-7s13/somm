@@ -48,6 +48,10 @@ describe('colour contrast (WCAG AA, 4.5:1 for body text)', () => {
     ['danger', 'bg'],
     ['ok', 'bg'],
     ['orange', 'bg'],
+    ['cyan', 'bg'],
+    ['violet', 'bg'],
+    ['magenta', 'bg'],
+    ['text-muted', 'bg-deep'],
   ];
   for (const [fg, bg] of pairs) {
     it(`--${fg} on --${bg}`, () => {

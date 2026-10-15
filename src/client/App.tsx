@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, type ComponentType } from 'react';
+import { GlobalFx } from './fx/GlobalFx';
 import { CallProvider } from './components/CallOverlay';
 import { Shell } from './components/Shell';
 import { ErrorState, Loading } from './components/States';
@@ -119,6 +120,7 @@ function WithCalls() {
 export function App() {
   return (
     <RouterProvider>
+      <GlobalFx />
       <ToastProvider>
         <AuthProvider>
           <WithCalls />

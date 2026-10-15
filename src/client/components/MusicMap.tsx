@@ -9,6 +9,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import type { MapEdge, MapNode, MusicMap as MusicMapData } from '../../shared/analysis/map';
 import { normalizeText } from '../../shared/normalize';
+import { ALL_LAYERS, edgeVisible, nodeVisible, type Layers } from '../map3d/engine';
 import { Icon } from './Icon';
 
 interface View {
@@ -29,6 +30,10 @@ export interface MusicMapProps {
   legend?: boolean;
   /** 'minimal' labels only the genre families (for small decorative maps). */
   labels?: 'auto' | 'minimal';
+  /** Label size multiplier (the listener's text-size setting). */
+  labelScale?: number;
+  /** Which optional layers to draw. */
+  layers?: Layers;
 }
 
 const FONT: Record<string, number> = { root: 15, family: 15, genre: 13, artist: 12, track: 11, attribute: 12, more: 11 };
@@ -69,19 +74,21 @@ interface SceneProps {
   interactive: boolean;
   animate: boolean;
   minimal: boolean;
+  layers: Layers;
 }
 
-const Scene = memo(function Scene({ map, detail, selectedId, matchIds, topArtists, topGenres, interactive, animate, minimal }: SceneProps) {
+const Scene = memo(function Scene({ map, detail, selectedId, matchIds, topArtists, topGenres, interactive, animate, minimal, layers }: SceneProps) {
   const byId = useMemo(() => new Map(map.nodes.map((n) => [n.id, n])), [map]);
   const selected = selectedId ? byId.get(selectedId) : undefined;
   const expandedArtist = selected?.kind === 'artist' ? selected.id : selected?.kind === 'track' ? selected.parentId : null;
 
   const visible = useCallback(
     (n: MapNode) => {
+      if (!nodeVisible(n, layers)) return false;
       if (n.kind !== 'track') return true;
       return detail >= 3 || n.parentId === expandedArtist || n.id === selectedId || (matchIds?.has(n.id) ?? false);
     },
-    [detail, expandedArtist, selectedId, matchIds],
+    [detail, expandedArtist, selectedId, matchIds, layers],
   );
 
   const showLabel = (n: MapNode) => {
@@ -129,7 +136,7 @@ const Scene = memo(function Scene({ map, detail, selectedId, matchIds, topArtist
         {map.edges.map((e) => {
           const s = byId.get(e.source);
           const t = byId.get(e.target);
-          if (!s || !t || !visible(s) || !visible(t)) return null;
+          if (!s || !t || !visible(s) || !visible(t) || !edgeVisible(e, layers)) return null;
           const dim = focusSet ? !(focusSet.has(e.source) && focusSet.has(e.target)) : false;
           const width = e.kind === 'branch' ? 0.8 + 4.5 * e.weight : e.kind === 'cooccurrence' ? 0.8 + 6 * e.weight : 0.8 + 2.5 * e.weight;
           return (
@@ -141,6 +148,8 @@ const Scene = memo(function Scene({ map, detail, selectedId, matchIds, topArtist
               vectorEffect="non-scaling-stroke"
               data-dim={dim}
               strokeDasharray={e.uncertain && e.kind === 'branch' ? '4 4' : undefined}
+              // Inline style: a stroke attribute would lose to the .edge-branch CSS rule.
+              style={e.kind === 'branch' && t.kind !== 'track' ? { stroke: t.color } : undefined}
             />
           );
         })}
@@ -165,10 +174,13 @@ const Scene = memo(function Scene({ map, detail, selectedId, matchIds, topArtist
               aria-pressed={focusable ? n.id === selectedId : undefined}
             >
               <g className={animate ? 'enter' : undefined} style={animate ? { animationDelay: `${kindOrder[n.kind] * 90}ms`, transformBox: 'fill-box', transformOrigin: 'center' } : undefined}>
+                {n.kind !== 'track' && <circle className="glow" r={n.r * 2.2} fill={n.kind === 'root' ? '#5cf2ff' : n.color} />}
+                {n.kind === 'root' && <circle className="root-ring" r={n.r + 10} vectorEffect="non-scaling-stroke" />}
                 <circle className="halo" r={n.r + 6} strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
                 <circle className="core" r={n.r} fill={n.kind === 'root' ? 'url(#somm-root)' : n.color} vectorEffect="non-scaling-stroke" />
+                {n.r >= 7 && <circle className="sheen" r={n.r} fill="url(#somm-sheen)" />}
                 {n.kind === 'more' && (
-                  <text textAnchor="middle" dominantBaseline="central" className="label" style={{ fontSize: `calc(11px / var(--k))`, strokeWidth: `calc(3px / var(--k))` }}>
+                  <text textAnchor="middle" dominantBaseline="central" className="label" style={{ fontSize: `calc(11px * var(--ls, 1) / var(--k))`, strokeWidth: `calc(3px * var(--ls, 1) / var(--k))` }}>
                     +
                   </text>
                 )}
@@ -183,13 +195,13 @@ const Scene = memo(function Scene({ map, detail, selectedId, matchIds, topArtist
                 const anchor = inner ? 'middle' : ux > 0.35 ? 'start' : ux < -0.35 ? 'end' : 'middle';
                 return (
                   <text
-                    className={`label ${n.kind === 'root' ? 'label-root' : ''}`}
+                    className={`label label-${n.kind}`}
                     textAnchor={anchor}
                     x={ux * n.r}
                     y={uy * n.r}
                     dx={anchor === 'start' ? '0.45em' : anchor === 'end' ? '-0.45em' : 0}
                     dy={n.kind === 'root' ? '0.35em' : anchor === 'middle' ? (uy >= 0 ? '1.15em' : '-0.55em') : '0.35em'}
-                    style={{ fontSize: `calc(${FONT[n.kind]}px / var(--k))`, strokeWidth: `calc(3.5px / var(--k))` }}
+                    style={{ fontSize: `calc(${FONT[n.kind]}px * var(--ls, 1) / var(--k))`, strokeWidth: `calc(3.5px * var(--ls, 1) / var(--k))` }}
                   >
                     {n.label.length > 34 ? `${n.label.slice(0, 32)}…` : n.label}
                   </text>
@@ -203,7 +215,20 @@ const Scene = memo(function Scene({ map, detail, selectedId, matchIds, topArtist
   );
 });
 
-export function MusicMap({ map, ariaLabel, selectedId = null, onSelect, interactive = true, compact = false, query = '', showControls = true, legend = false, labels = 'auto' }: MusicMapProps) {
+export function MusicMap({
+  map,
+  ariaLabel,
+  selectedId = null,
+  onSelect,
+  interactive = true,
+  compact = false,
+  query = '',
+  showControls = true,
+  legend = false,
+  labels = 'auto',
+  labelScale = 1,
+  layers = ALL_LAYERS,
+}: MusicMapProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState<View>({ k: 1, x: 0, y: 0 });
@@ -431,17 +456,33 @@ export function MusicMap({ map, ariaLabel, selectedId = null, onSelect, interact
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onPointerLeave={() => setHover(null)}
-        style={{ ['--k' as string]: view.k / (narrow ? 0.85 : 1) }}
+        style={{ ['--k' as string]: view.k / (narrow ? 0.85 : 1), ['--ls' as string]: labelScale }}
       >
         <defs>
           <radialGradient id="somm-root" cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stopColor="#5C82FF" />
-            <stop offset="60%" stopColor="#1747FF" />
+            <stop offset="0%" stopColor="#8fe9ff" />
+            <stop offset="45%" stopColor="#1747FF" />
             <stop offset="100%" stopColor="#0B2A9E" />
+          </radialGradient>
+          <radialGradient id="somm-sheen" cx="32%" cy="28%" r="70%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.75" />
+            <stop offset="35%" stopColor="#ffffff" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="#020824" stopOpacity="0.35" />
           </radialGradient>
         </defs>
         <g transform={`translate(${view.x},${view.y}) scale(${view.k})`}>
-          <Scene map={map} detail={detail} selectedId={selectedId} matchIds={matchIds} topArtists={topArtists} topGenres={topGenres} interactive={interactive} animate={animate} minimal={labels === 'minimal'} />
+          <Scene
+            map={map}
+            detail={detail}
+            selectedId={selectedId}
+            matchIds={matchIds}
+            topArtists={topArtists}
+            topGenres={topGenres}
+            interactive={interactive}
+            animate={animate}
+            minimal={labels === 'minimal'}
+            layers={layers}
+          />
         </g>
       </svg>
 

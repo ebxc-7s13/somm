@@ -9,14 +9,16 @@
   </head>
   <body>
     <main>
-      <img src="icon.svg" alt="" width="72" height="72" />
-      <h1>Can’t reach SOMM right now</h1>
-      <p>
-        SOMM runs on a free server that sleeps after 15 minutes without visitors. Waking it takes up to a minute —
-        or your phone may be offline.
-      </p>
-      <button id="retry" type="button">Try again</button>
-      <p class="small" id="status" role="status" aria-live="polite"></p>
+      <div class="card">
+        <span class="orb" aria-hidden="true"><img src="icon.svg" alt="" width="72" height="72" /></span>
+        <h1>Can’t reach SOMM right now</h1>
+        <p>
+          SOMM runs on a free server that sleeps after 15 minutes without visitors. Waking it takes up to a minute —
+          or your phone may be offline.
+        </p>
+        <button id="retry" type="button">Try again</button>
+        <p class="small" id="status" role="status" aria-live="polite"></p>
+      </div>
     </main>
     <script src="app-url.js"></script>
     <script src="shell.js"></script>

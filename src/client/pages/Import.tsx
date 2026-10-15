@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
 import { ProviderName } from '../components/Badges';
+import { ExternalExportCallout } from '../components/ExternalExport';
 import { Icon } from '../components/Icon';
 import { ErrorState, Loading, Spinner } from '../components/States';
 import { useApi, useDocumentTitle } from '../hooks';
@@ -614,7 +615,10 @@ export function ImportPage() {
         </div>
         {count > 0 && <span className="badge">{count} playlist{count === 1 ? '' : 's'} imported</span>}
       </div>
-      <ImportFlow onCommitted={(jobId) => navigate(`/import/jobs/${jobId}`)} />
+      <div className="stack-lg">
+        <ExternalExportCallout headingLevel={2} target="convert" />
+        <ImportFlow onCommitted={(jobId) => navigate(`/import/jobs/${jobId}`)} />
+      </div>
     </div>
   );
 }

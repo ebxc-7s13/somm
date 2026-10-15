@@ -28,6 +28,8 @@ if (typeof window !== 'undefined') {
     dispatchEvent: () => false,
   })) as typeof window.matchMedia;
   window.scrollTo = () => {};
+  // jsdom has no canvas: behave like a browser without canvas support (and skip its "not implemented" noise).
+  HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
   Element.prototype.scrollIntoView ??= () => {};
   // Testing Library only auto-cleans with Vitest globals enabled; unmount explicitly.
   const { cleanup } = await import('@testing-library/react');

@@ -38,7 +38,7 @@ describe('Landing page', () => {
     expect(screen.getByRole('heading', { name: 'A Social Mind for Audiophiles' })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /Map my music/ }).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Try the demo' })).toBeEnabled();
-    expect(screen.getByRole('application', { name: /fictional library/ })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: /fictional library/ })).toBeInTheDocument();
     expect(screen.getByText(/generated live from a fictional library/)).toBeInTheDocument();
     expect(screen.getByText(/never asks for your Spotify, YouTube or Apple password/)).toBeInTheDocument();
   });

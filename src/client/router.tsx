@@ -2,6 +2,8 @@
  * A ~60-line History API router — enough for SOMM's routes without a dependency.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type AnchorHTMLAttributes, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
+import { prefersReducedMotion } from './fx/motion';
 
 interface Location {
   pathname: string;
@@ -25,10 +27,17 @@ export function RouterProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
   const navigate = useCallback((to: string, opts: { replace?: boolean } = {}) => {
-    if (opts.replace) window.history.replaceState(null, '', to);
-    else window.history.pushState(null, '', to);
-    setLocation(current());
-    if (!to.includes('#')) window.scrollTo({ top: 0 });
+    const go = () => {
+      if (opts.replace) window.history.replaceState(null, '', to);
+      else window.history.pushState(null, '', to);
+      setLocation(current());
+      if (!to.includes('#')) window.scrollTo({ top: 0 });
+    };
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
+    // Animated page change where supported; redirects (replace) stay instant.
+    if (!opts.replace && typeof doc.startViewTransition === 'function' && !prefersReducedMotion()) {
+      doc.startViewTransition(() => flushSync(go));
+    } else go();
   }, []);
   const value = useMemo(() => ({ location, navigate }), [location, navigate]);
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;

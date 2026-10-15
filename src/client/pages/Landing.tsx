@@ -5,18 +5,20 @@ import { LISTENERS, listenerTracks } from '../../shared/demoCatalog';
 import { canonicalGenre, genreFamily } from '../../shared/taxonomy';
 import type { LibraryTrack } from '../../shared/types';
 import { api, errorMessage } from '../api';
+import { ExternalExportCallout } from '../components/ExternalExport';
 import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
-import { MusicMap } from '../components/MusicMap';
 import { TreeGlyph } from '../components/TreeGlyph';
+import { Marquee, Tilt } from '../fx/Tilt';
 import { useDocumentTitle } from '../hooks';
+import { MusicMap3D } from '../map3d/MusicMap3D';
 import { Link, useNavigate } from '../router';
 import { useAuth } from '../state';
 
 /** A fictional library built in the browser with the real analysis engine. */
 function useDemoMap() {
   return useMemo(() => {
-    const picks = [0, 3, 6].flatMap((i) => listenerTracks(LISTENERS[i]!, i).slice(0, 14));
+    const picks = [0, 3, 6, 9].flatMap((i) => listenerTracks(LISTENERS[i % LISTENERS.length]!, i).slice(0, 14));
     const tracks: LibraryTrack[] = picks.map((t, i) => {
       const g = canonicalGenre(t.genre)!;
       const artistId = `demo-${t.artist}`;
@@ -35,7 +37,7 @@ function useDemoMap() {
       };
     });
     const profile = computeProfile(tracks);
-    return buildMusicMap(tracks, profile, { rootLabel: 'A Music Mind', maxTracks: 0, includeTracks: false, maxAttributes: 5 });
+    return buildMusicMap(tracks, profile, { rootLabel: 'A Music Mind', maxTracks: 60, includeTracks: true, maxAttributes: 6 });
   }, []);
 }
 
@@ -45,6 +47,16 @@ const EXAMPLE_TREES = [
   { name: 'Indian Classical Explorers', families: [{ family: 'indian', share: 0.75 }, { family: 'ambient', share: 0.15 }, { family: 'jazz', share: 0.1 }] },
   { name: 'Metal & Heavy Riffs', families: [{ family: 'metal', share: 0.8 }, { family: 'rock', share: 0.2 }] },
 ];
+
+const GENRES_A = ['Synthwave', 'Filmi', 'Hard bop', 'Dream pop', 'Drum & Bass', 'Afrobeats', 'Shoegaze', 'Carnatic', 'Lo-Fi Hip Hop', 'Trip Hop', 'Bossa nova', 'Techno'];
+const GENRES_B = ['Ambient', 'K-Pop', 'Neo-soul', 'Post-rock', 'Ghazal', 'Reggaeton', 'Cool jazz', 'Grime', 'Indie folk', 'Hyperpop', 'Dub', 'Baroque'];
+
+const STEPS = [
+  { n: '01', title: 'Import', icon: 'import', text: 'Upload a CSV, M3U or XSPF, paste a list, or convert any playlist. SOMM deduplicates carefully and keeps remixes and live versions separate.' },
+  { n: '02', title: 'Map', icon: 'map', text: 'Genres, artists, songs and sound attributes become a 3D constellation you can spin, zoom, fly through — and save as a poster.' },
+  { n: '03', title: 'Mind', icon: 'mind', text: 'Readable observations about your listening — each with its evidence, its source and how confident SOMM is.' },
+  { n: '04', title: 'Trees', icon: 'trees', text: 'Communities formed from genuinely overlapping libraries, with a transparent match score and a shared chat.' },
+] as const;
 
 export function Landing() {
   useDocumentTitle('');
@@ -69,28 +81,31 @@ export function Landing() {
   };
 
   return (
-    <div>
+    <div className="landing">
       <a className="skip-link" href="#main">
         Skip to content
       </a>
       <header className="landing-nav">
-        <Link to="/" aria-label="SOMM — Sound of My Mind" style={{ color: 'var(--white)', textDecoration: 'none' }}>
+        <Link to="/" aria-label="SOMM — Sound of My Mind" className="brand" style={{ color: 'var(--white)', textDecoration: 'none' }}>
           <Logo size={28} />
         </Link>
         <span style={{ flex: 1 }} />
         <nav className="row hide-sm" aria-label="Sections">
-          <a href="#how" className="btn btn-ghost btn-sm">
+          <a href="#how" className="nav-chip">
             How it works
           </a>
-          <a href="#trees" className="btn btn-ghost btn-sm">
+          <a href="#bring" className="nav-chip">
+            Your playlists
+          </a>
+          <a href="#trees" className="nav-chip">
             Trees
           </a>
-          <a href="#honest" className="btn btn-ghost btn-sm">
+          <a href="#honest" className="nav-chip">
             Principles
           </a>
         </nav>
         {me ? (
-          <Link to="/map" className="btn btn-primary btn-sm">
+          <Link to="/map" className="btn btn-primary btn-sm" data-magnetic>
             Open my map
           </Link>
         ) : (
@@ -98,7 +113,7 @@ export function Landing() {
             <Link to="/signin" className="btn btn-ghost btn-sm">
               Sign in
             </Link>
-            <Link to="/signup" className="btn btn-primary btn-sm hide-sm">
+            <Link to="/signup" className="btn btn-primary btn-sm hide-sm" data-magnetic>
               Map my music
             </Link>
           </>
@@ -107,24 +122,27 @@ export function Landing() {
 
       <main id="main">
         <section className="hero" aria-labelledby="hero-title">
-          <div>
+          <div className="y2k-floor" aria-hidden="true" />
+          <div className="hero-copy">
             <p className="eyebrow">SOMM — Sound of My Mind</p>
-            <h1 id="hero-title">
-              You Are <span className="accent">What You</span> Consume
+            <h1 id="hero-title" className="hero-title">
+              <span className="word" style={{ ['--i' as string]: 0 }}>You</span> <span className="word" style={{ ['--i' as string]: 1 }}>Are</span>{' '}
+              <span className="word accent" style={{ ['--i' as string]: 2 }}>What</span> <span className="word accent" style={{ ['--i' as string]: 3 }}>You</span>{' '}
+              <span className="word" style={{ ['--i' as string]: 4 }}>Consume</span>
             </h1>
             <p className="tagline">Map your music. Discover your sound. Find your people.</p>
             <p className="lead">
-              Bring a playlist from a file, Spotify, YouTube or Apple Music. SOMM turns its metadata into an interactive map of your musical identity —
-              and connects you with listeners whose maps overlap yours.
+              Bring a playlist from a file, Spotify, YouTube or Apple Music. SOMM turns its metadata into a living 3D map of your musical identity — and
+              connects you with listeners whose maps overlap yours.
             </p>
-            <div className="row" style={{ marginTop: 'var(--space-5)' }}>
+            <div className="row cta-row">
               {me ? (
-                <Link to="/map" className="btn btn-primary btn-lg">
+                <Link to="/map" className="btn btn-primary btn-lg" data-magnetic>
                   Open my Music Map
                 </Link>
               ) : (
                 <>
-                  <Link to="/signup" className="btn btn-primary btn-lg">
+                  <Link to="/signup" className="btn btn-primary btn-lg" data-magnetic>
                     Map my music
                   </Link>
                   <button type="button" className="btn btn-ghost btn-lg" onClick={startDemo} disabled={busy}>
@@ -142,89 +160,124 @@ export function Landing() {
               No email required. SOMM never asks for your Spotify, YouTube or Apple password.
             </p>
             <p className="small" style={{ marginTop: 'var(--space-2)' }}>
-              <Link to="/convert">Convert a playlist to CSV</Link> <span className="faint">— free, no account needed.</span>
+              <Link to="/convert" className="chip-link">
+                Convert a playlist to CSV
+              </Link>{' '}
+              <span className="faint">— free, no account needed.</span>
             </p>
           </div>
-          <figure className="hero-map" style={{ margin: 0 }}>
-            <MusicMap map={map} ariaLabel="Example Music Map generated from a fictional library" interactive={false} compact showControls={false} labels="minimal" />
+          <figure className="hero-orb">
+            <div className="orb-rings" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+            <MusicMap3D showcase autoRotate map={map} ariaLabel="Example Music Map generated from a fictional library" depth={1.15} className="hero-map3d" />
             <figcaption>Illustrative map · generated live from a fictional library</figcaption>
           </figure>
+          <a href="#how" className="scroll-cue" aria-label="Scroll to how it works">
+            <span />
+          </a>
         </section>
 
-        <section className="section-pale" id="how" aria-labelledby="how-title">
-          <div className="section">
+        <div className="marquee-band">
+          <Marquee items={GENRES_A} />
+          <Marquee items={GENRES_B} reverse />
+        </div>
+
+        <section className="section" id="how" aria-labelledby="how-title">
+          <div data-reveal>
             <p className="eyebrow">How it works</p>
             <h2 id="how-title">From playlist to people, in four connected steps</h2>
             <p className="lead">No questionnaire. Your first map appears as soon as your tracks are read.</p>
-            <ol className="flow">
-              <li>
-                <span className="node-num">1</span>
-                <h3>Import</h3>
-                <p className="muted">Upload a CSV, M3U or XSPF, paste a list, or connect a supported service. SOMM deduplicates carefully and keeps remixes and live versions separate.</p>
-              </li>
-              <li>
-                <span className="node-num">2</span>
-                <h3>Map</h3>
-                <p className="muted">Genres, artists, tracks and sound attributes become a navigable constellation. Node size is track count; lines show how your tastes connect.</p>
-              </li>
-              <li>
-                <span className="node-num">3</span>
-                <h3>Mind</h3>
-                <p className="muted">Readable observations about your listening — each with its evidence, its source and how confident SOMM is.</p>
-              </li>
-              <li>
-                <span className="node-num">4</span>
-                <h3>Trees</h3>
-                <p className="muted">Communities formed from genuinely overlapping libraries, with a transparent match score and a shared chat.</p>
-              </li>
-            </ol>
           </div>
+          <ol className="steps">
+            {STEPS.map((s, i) => (
+              <li key={s.n} data-reveal style={{ ['--i' as string]: i }}>
+                <Tilt className="step-card fx-card">
+                  <span className="step-n" aria-hidden="true">
+                    {s.n}
+                  </span>
+                  <span className="step-icon" aria-hidden="true">
+                    <Icon name={s.icon} size={26} />
+                  </span>
+                  <h3>{s.title}</h3>
+                  <p className="muted small">{s.text}</p>
+                </Tilt>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <section className="section" id="bring">
+          <ExternalExportCallout />
         </section>
 
         <section className="section" id="trees" aria-labelledby="trees-title">
-          <p className="eyebrow">Trees</p>
-          <h2 id="trees-title">A Social Mind for Audiophiles</h2>
-          <p className="lead">
-            When enough listeners share artists, tracks and genre balance, SOMM proposes a Tree — a shared musical world with its own map and
-            discussion. One popular song in common is never enough.
-          </p>
+          <div data-reveal>
+            <p className="eyebrow">Trees</p>
+            <h2 id="trees-title">A Social Mind for Audiophiles</h2>
+            <p className="lead">
+              When enough listeners share artists, tracks and genre balance, SOMM proposes a Tree — a shared musical world with its own map and
+              discussion. One popular song in common is never enough.
+            </p>
+          </div>
           <div className="tree-showcase">
-            {EXAMPLE_TREES.map((t) => (
-              <div key={t.name} className="tree-card" style={{ gridTemplateColumns: '1fr', justifyItems: 'start' }}>
-                <TreeGlyph seed={t.name} families={t.families} size={88} />
-                <h3>{t.name}</h3>
-                <p className="small muted">Example label — real Trees are named from their members’ actual data.</p>
+            {EXAMPLE_TREES.map((t, i) => (
+              <div key={t.name} data-reveal style={{ ['--i' as string]: i }}>
+                <Tilt className="tree-card fx-card" style={{ gridTemplateColumns: '1fr', justifyItems: 'start' }}>
+                  <TreeGlyph seed={t.name} families={t.families} size={88} />
+                  <h3>{t.name}</h3>
+                  <p className="small muted">Example label — real Trees are named from their members’ actual data.</p>
+                </Tilt>
               </div>
             ))}
           </div>
         </section>
 
         <section className="section" id="honest" aria-labelledby="honest-title">
-          <p className="eyebrow">Honest by design</p>
-          <h2 id="honest-title">Musical identity — not a personality test</h2>
+          <div data-reveal>
+            <p className="eyebrow">Honest by design</p>
+            <h2 id="honest-title">Musical identity — not a personality test</h2>
+          </div>
           <div className="principles">
-            <div className="panel">
-              <Icon name="note" size={28} />
-              <h3>Music metadata only</h3>
-              <p className="muted small">No age, gender, location, contacts or demographics. A pseudonymous handle is all you need.</p>
-            </div>
-            <div className="panel">
-              <Icon name="check" size={28} />
-              <h3>Every fact has a source</h3>
-              <p className="muted small">Genres and attributes are tagged as provider, credited, community, your file — or clearly inferred, with confidence.</p>
-            </div>
-            <div className="panel">
-              <Icon name="shield" size={28} />
-              <h3>You decide what is shared</h3>
-              <p className="muted small">Playlists are private until you choose. Trees only ever show what at least two members have in common.</p>
-            </div>
-            <div className="panel">
-              <Icon name="warning" size={28} />
-              <h3>Honest integrations</h3>
-              <p className="muted small">
-                Spotify only exposes playlists you own or collaborate on; YouTube gives titles, not genres. SOMM says so instead of faking it.
-              </p>
-            </div>
+            {(
+              [
+                ['note', 'Music metadata only', 'No age, gender, location, contacts or demographics. A pseudonymous handle is all you need.'],
+                ['check', 'Every fact has a source', 'Genres and attributes are tagged as provider, credited, community, your file — or clearly inferred, with confidence.'],
+                ['shield', 'You decide what is shared', 'Playlists are private until you choose. Trees only ever show what at least two members have in common.'],
+                [
+                  'warning',
+                  'Honest integrations',
+                  'Spotify only exposes playlists you own or collaborate on; YouTube gives titles, not genres. SOMM says so instead of faking it.',
+                ],
+              ] as const
+            ).map(([icon, title, text], i) => (
+              <div key={title} data-reveal style={{ ['--i' as string]: i }}>
+                <Tilt className="panel fx-card principle">
+                  <span className="principle-icon" aria-hidden="true">
+                    <Icon name={icon} size={26} />
+                  </span>
+                  <h3>{title}</h3>
+                  <p className="muted small">{text}</p>
+                </Tilt>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="cta-band" aria-labelledby="cta-title" data-reveal>
+          <h2 id="cta-title">
+            Your sound, <span className="holo-text">mapped in 3D</span>.
+          </h2>
+          <p className="lead">Import a playlist, spin your map, save it as a poster with your @handle — then find your people.</p>
+          <div className="row" style={{ justifyContent: 'center' }}>
+            <Link to={me ? '/map' : '/signup'} className="btn btn-primary btn-lg" data-magnetic>
+              {me ? 'Open my Music Map' : 'Start my map'}
+            </Link>
+            <Link to="/convert" className="btn btn-ghost btn-lg">
+              Convert a playlist
+            </Link>
           </div>
         </section>
       </main>
@@ -234,9 +287,7 @@ export function Landing() {
           <span>
             <strong style={{ color: 'var(--white)' }}>SOMM</strong> · Sound of My Mind · You Are What You Consume
           </span>
-          <span>
-            Metadata from MusicBrainz (CC0 / CC BY-NC-SA) and the services you connect. SOMM never stores or streams audio.
-          </span>
+          <span>Metadata from MusicBrainz (CC0 / CC BY-NC-SA) and the services you connect. SOMM never stores or streams audio.</span>
         </div>
       </footer>
     </div>

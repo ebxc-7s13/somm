@@ -12,14 +12,29 @@
   --pale: #eaf0ff;
   --charcoal: #101629;
 
-  /* Derived surfaces (layered blues, no blur) */
-  --bg: #071a52;
-  --bg-deep: #050f36;
+  /* Y2K accents: holographic cyan, violet and magenta */
+  --cyan: #5cf2ff;
+  --violet: #9b7bff;
+  --magenta: #ff5ad8;
+  --mint: #6dffcf;
+  --holo: linear-gradient(100deg, #5cf2ff 0%, #9b7bff 28%, #ff5ad8 55%, #ffd83d 80%, #5cf2ff 100%);
+  --chrome: linear-gradient(180deg, #ffffff 0%, #dfe6ff 30%, #8d9ce0 52%, #f4f7ff 68%, #b3bff0 100%);
+
+  /* Derived surfaces */
+  --bg: #050f3a;
+  --bg-deep: #030a29;
   --surface-1: #0b2266;
   --surface-2: #0f2b7d;
   --surface-3: #153596;
   --line: rgba(234, 240, 255, 0.14);
   --line-strong: rgba(234, 240, 255, 0.28);
+
+  /* Liquid glass */
+  --glass-tint: rgba(22, 44, 140, 0.34);
+  --glass-deep: rgba(6, 14, 52, 0.72);
+  --glass-border: rgba(214, 226, 255, 0.2);
+  --glass-hi: rgba(255, 255, 255, 0.24);
+  --glass-blur: 18px;
 
   /* Text */
   --text: #ffffff;
@@ -36,16 +51,18 @@
   --info: #8fb3ff;
 
   /* Type */
-  --font-display: 'Sora Variable', 'Sora', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Unbounded Variable', 'Sora Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-ui: 'Space Grotesk Variable', 'Inter Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-logo: 'Sora Variable', 'Sora', 'Segoe UI', system-ui, sans-serif;
   --font-body: 'Inter Variable', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --fs-xs: 0.78rem;
   --fs-sm: 0.875rem;
   --fs-md: 1rem;
   --fs-lg: 1.125rem;
   --fs-xl: 1.375rem;
-  --fs-2xl: clamp(1.6rem, 2.6vw, 2.1rem);
-  --fs-3xl: clamp(2rem, 4vw, 3rem);
-  --fs-hero: clamp(2.7rem, 7vw, 5.6rem);
+  --fs-2xl: clamp(1.35rem, 2.2vw, 1.85rem);
+  --fs-3xl: clamp(1.75rem, 3.5vw, 2.7rem);
+  --fs-hero: clamp(2.3rem, 6.2vw, 5.2rem);
 
   /* Space & shape */
   --space-1: 0.25rem;
@@ -65,6 +82,7 @@
   --focus: 0 0 0 3px var(--charcoal), 0 0 0 6px var(--yellow);
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --dur: 220ms;
   --nav-h: 64px;
   --tab-h: 64px;

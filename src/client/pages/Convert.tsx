@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
+import { ExternalExportCallout } from '../components/ExternalExport';
 import { Icon } from '../components/Icon';
 import { Spinner } from '../components/States';
 import { detectSource, readTextFile, storeCsvHandoff } from '../fileText';
@@ -81,6 +82,14 @@ function SourceHelp() {
     <details className="disclose">
       <summary>Where do I get my playlist?</summary>
       <dl className="small muted help-list">
+        <dt>Any service, in one go</dt>
+        <dd>
+          Use an external playlist tool such as{' '}
+          <a href="https://www.tunemymusic.com/home" target="_blank" rel="noopener noreferrer">
+            TuneMyMusic
+          </a>{' '}
+          to export your playlists to a CSV file, then upload it here. Files that contain several playlists are split into one CSV each.
+        </dd>
         <dt>Spotify</dt>
         <dd>
           <strong>Quickest:</strong> in the Spotify app on a computer, open the playlist, click one song, press <kbd>Ctrl</kbd>+<kbd>A</kbd> (
@@ -261,7 +270,8 @@ export function ConvertPage() {
   const onFile = async (file: File | undefined) => {
     if (!file) return;
     const source = detectSource(file.name);
-    const limit = source === 'json' ? MAX_JSON_BYTES : MAX_FILE_BYTES;
+    // Spotify's data export and playlist-tool CSVs can hold a whole account.
+    const limit = source === 'json' || source === 'csv' ? MAX_JSON_BYTES : MAX_FILE_BYTES;
     if (file.size > limit) return setError(`This file is larger than ${limit / 1024 / 1024} MB. Split it into smaller files.`);
     await convert({ source, content: await readTextFile(file), fileName: file.name });
   };
@@ -522,6 +532,7 @@ export function ConvertPage() {
       </div>
 
       <div className="stack-lg">
+        <ExternalExportCallout headingLevel={2} target="import" />
         <div className="tabs" role="tablist" aria-label="Playlist source">
           {(
             [
@@ -573,8 +584,8 @@ export function ConvertPage() {
               <Icon name="upload" size={40} />
               <h2>Upload a playlist file</h2>
               <p className="muted small">
-                Spotify data export (Playlist1.json, up to 12 MB), Exportify or other CSV exports, Apple Music / iTunes exported playlists (.txt), M3U/M3U8,
-                XSPF or JSON. Other files up to 2 MB.
+                Spotify data export (Playlist1.json), TuneMyMusic, Exportify or other CSV exports (up to 12 MB; several playlists in one CSV become one
+                CSV each), Apple Music / iTunes exported playlists (.txt), M3U/M3U8, XSPF or JSON. Other files up to 2 MB.
               </p>
               <button type="button" className="btn btn-primary" onClick={() => fileRef.current?.click()} disabled={busy}>
                 Choose a file

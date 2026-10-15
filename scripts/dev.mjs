@@ -3,7 +3,10 @@ import { spawn } from 'node:child_process';
 
 const isWin = process.platform === 'win32';
 const npx = isWin ? 'npx.cmd' : 'npx';
-const env = process.env;
+// The API listens on PORT (default 8787); Vite always serves 5173 and proxies /api to PORT.
+// Preview launchers may set PORT to the preview port itself, which would point both at Vite.
+const VITE_PORT = '5173';
+const env = { ...process.env, PORT: process.env.PORT && process.env.PORT !== VITE_PORT ? process.env.PORT : '8787' };
 
 const procs = [
   spawn(npx, ['tsx', 'watch', '--clear-screen=false', 'src/server/index.ts'], { stdio: 'inherit', env, shell: isWin }),

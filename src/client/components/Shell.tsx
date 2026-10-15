@@ -63,7 +63,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       )}
       <header className="topbar">
-        <Link to={me ? '/map' : '/'} aria-label="SOMM — Sound of My Mind, home" style={{ color: 'var(--white)', textDecoration: 'none' }}>
+        <Link to={me ? '/map' : '/'} aria-label="SOMM — Sound of My Mind, home" className="brand" style={{ color: 'var(--white)', textDecoration: 'none' }}>
           <Logo size={26} />
         </Link>
         <nav className="nav" aria-label="Main">
@@ -72,6 +72,7 @@ export function Shell({ children }: { children: ReactNode }) {
               {n.label}
             </NavLink>
           ))}
+          <NavLink to="/convert">Convert</NavLink>
         </nav>
         <span className="spacer" />
         {me && (
@@ -87,6 +88,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 onKeyDown={(e) => e.key === 'Escape' && setMenu(false)}
               >
                 {[
+                  ['/convert', 'Playlist → CSV converter'],
                   ['/u/' + me.user.handle, 'My public profile'],
                   ['/settings/privacy', 'Privacy & sharing'],
                   ['/settings', 'Settings & providers'],
