@@ -249,7 +249,27 @@ with consented engagement data; add Playwright tests; deploy behind HTTPS with b
 * **Android 0.1.6** released with install instructions, size and SHA-256; download, URL and signature verified.
 * Tests: 205 passing in 18 files.
 
-## 18. Git status
+## 18. Phase 4 (2026-10-15): 3D Music Map, posters and visual redesign
+
+* **Audit first:** a design critique of every main screen ([DESIGN_AUDIT.md](DESIGN_AUDIT.md)) set the priorities:
+  the map experience, getting playlists in, and visual identity.
+* **3D Music Map** (`src/client/map3d/`): a dependency-free engine lifts the deterministic 2D layout into a dome and
+  projects it through a perspective camera; a canvas renderer draws glowing spheres from cached sprites, curved
+  links, a polar grid, stars and overlap-free labels. Drag, wheel, pinch, twist and keyboard controls; depth, camera
+  angles, auto-spin, layers, a text-size slider and full screen (with an in-page fallback).
+* **Sound of My Mind posters:** portrait, story, square and landscape PNGs with three themes, the SOMM logo, the
+  listener's @handle, top genres, stats, date and site under the map; framing fits the whole map and its labels;
+  browsers download or share, the Android app saves through the share sheet (Capacitor Share + Filesystem).
+* **Redesign:** Unbounded and Space Grotesk, liquid glass, holographic accents, an aurora backdrop, a live 3D hero,
+  scroll reveals, tilt cards, magnetic buttons, a cursor glow, page transitions and a restyled Android offline page,
+  all off with *reduce motion*.
+* **Getting music in:** a large TuneMyMusic guide on the landing, Convert and Import pages, Convert in the
+  navigation, and multi-playlist CSVs split into one CSV per playlist in the converter.
+* **Data retention:** the redesign changes no database schema; existing accounts, playlists, maps and Tree
+  memberships in the Neon database are untouched.
+* Tests: 251 passing in 21 files (new map engine, poster, map page and CSV-split tests).
+
+## 19. Git status
 
 * Website: <https://soundofmymind.onrender.com> · Android: <https://github.com/ebxc-7s13/somm/releases/latest>
 * Branch: `main` on the GitHub repository <https://github.com/ebxc-7s13/somm>, made **public** on 2026-10-14 after a

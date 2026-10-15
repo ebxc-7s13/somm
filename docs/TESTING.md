@@ -7,7 +7,7 @@ npm run lint         # ESLint 10 + typescript-eslint
 npm run check        # typecheck + lint + test + build
 ```
 
-Last full run (2026-10-14, Windows 11, Node 22.23.2): **221 tests in 19 files, all passing**; typecheck and lint clean.
+Last full run (2026-10-15, Windows 11, Node 22.23.2): **251 tests in 21 files, all passing**; typecheck and lint clean.
 
 Database tests run real PostgreSQL SQL through **PGlite** (Postgres compiled to WebAssembly, in-process): nothing to
 install. `tests/global-setup.ts` migrates one database, dumps it, and caches the snapshot under
@@ -17,7 +17,7 @@ suite takes ~1.5 minutes; workers are capped at half the logical CPUs because th
 
 | File | Tests | Covers |
 | --- | --- | --- |
-| `tests/unit/normalize.test.ts` | 14 | text folding (incl. Devanagari), version detection (remix/live/acoustic/remaster/edit), featuring, artist splitting, YouTube title parsing, genre aliases/families, tag vocabulary |
+| `tests/unit/normalize.test.ts` | 15 | text folding (incl. Devanagari), version detection (remix/live/acoustic/remaster/edit), featuring, artist splitting, YouTube title parsing, genre aliases/families, tag vocabulary |
 | `tests/unit/profile-map.test.ts` | 20 | exact counts, missing genres, co-occurrence, order-independent stable output, verified vs inferred attributes, empty library, map hierarchy + unknown branch, stable layout, single-track and 2,000-track libraries (bounded nodes), regeneration after import, insights (dominant/broad/inferred/verified/caveats/no non-musical claims) |
 | `tests/unit/similarity.test.ts` | 17 | identical lists, shared artists without tracks, broad popular-genre overlap, different genres with a few shared artists, unequal sizes + symmetry, missing-feature renormalisation, verified attributes, transparent contributions, one popular song (IDF + evidence), evidence gate, empty libraries, configurable weights, clustering + minimum evidence, labels, aggregation, explanations |
 | `tests/integration/imports.test.ts` | 18 | CSV/Exportify/text/M3U/XSPF/JSON parsers, invalid rows, empty/header-only, size and row limits, XXE rejection, attribute vocabulary, preview classification (duplicates, versions, already-in-library), cross-user ISRC/title merge, duration conflicts, include/skip rows, structured errors for invalid/empty/unsupported/unconfigured providers, auth, job progress without enrichment, job isolation |
@@ -27,13 +27,15 @@ suite takes ~1.5 minutes; workers are capped at half the logical CPUs because th
 | `tests/integration/trees-chat.test.ts` | 19 | creation evidence threshold, eligibility, cluster proposals + candidate-only access + activation at 2 members, ranked/explained recommendations, member self-exclusion, join/leave/archive, k-anonymity, private-playlist protection, empty/low-population Trees, name voting, member directory access + blocks, chat membership, history/timestamps/replies/track refs/safe links, input validation, pagination, rate limit, block/mute filtering, report auto-hide + moderation, report validation |
 | `tests/integration/realtime.test.ts` | 8 | real HTTP+WebSocket server: unauthenticated/cross-origin upgrade rejection, member-only delivery, mute filtering, leave stops delivery, reconnect gap-fill, ping/pong, malformed frames; call signalling: full offer/answer/ICE relay, state checks, non-members, blocks, offline callee, decline, ring timeout, disconnect ends call, `CALLS_ENABLED=false` |
 | `tests/e2e/workflow.test.ts` | 2 | the 12-step acceptance workflow on the seeded fictional community; seed idempotency; demo listeners cannot sign in |
-| `tests/ui/components.test.tsx` | 12 | landing copy/CTAs/taglines, demo network failure, map keyboard access + aria labels + selection + search + dimming, list alternative, offline error + retry, empty states, score ring + breakdown, library long names/coverage/version badges, network failure recovery, empty library |
-| `tests/unit/csv.test.ts` | 4 | CSV writer quoting/BOM/CRLF, formula neutralising and restoring, durations, file names, convert → CSV → import round trip (commas, quotes, several artists, formula-like titles, line breaks, attributes, links) |
-| `tests/integration/convert.test.ts` | 6 | converter without an account stores nothing (title-only lines kept); Spotify data export split per playlist (episodes skipped, local files read); Apple Music/iTunes export (paths ignored); import still explains bare Spotify links; Spotify links need sign-in, YouTube needs only the server key; validation and rate limit; converted CSV imports the same songs including an edited genre |
+| `tests/ui/components.test.tsx` | 12 | landing copy/CTAs/taglines and the live 3D hero map (as an image with a text alternative), demo network failure, map keyboard access + aria labels + selection + search + dimming, list alternative, offline error + retry, empty states, score ring + breakdown, library long names/coverage/version badges, network failure recovery, empty library |
+| `tests/ui/map.test.tsx` | 5 | Music Map page: 3D by default with explore controls, text-size slider remembered, spin toggle, camera angles, layers saved; 2D and list views keep the text size; full screen falls back to an in-page view and Escape leaves it; *Save my map* dialog (four orientations, current camera, @handle under the map, text and map size sliders, a clear error without canvas support, Escape closes); TuneMyMusic guide links (new tab, `noopener noreferrer`) |
+| `tests/unit/map3d.test.ts` | 16 | 3D engine: the flat top view reproduces the 2D layout exactly, dome heights, tilt and far-to-near order, hit-testing, layers; label priorities and overlap-free placement with fallback positions; camera clamping and short-way easing; poster sizes for every orientation and quality, footer under the map, file names; drawing a poster on a recording canvas (nothing cleared, so no transparent map; @handle, name line, site and logo below the map; stats line); framing that fits and centres the whole map, and makes room for measured labels |
+| `tests/unit/csv.test.ts` | 8 | CSV writer quoting/BOM/CRLF, formula neutralising and restoring, durations, file names, convert → CSV → import round trip (commas, quotes, several artists, formula-like titles, line breaks, attributes, links); CSVs holding several playlists: split per playlist with original row numbers, unnamed rows and files without the column, combined import with a note, per-playlist size limit |
+| `tests/integration/convert.test.ts` | 7 | converter without an account stores nothing (title-only lines kept); Spotify data export split per playlist (episodes skipped, local files read); a CSV with a playlist column split into one CSV per playlist while import combines it with a note; Apple Music/iTunes export (paths ignored); import still explains bare Spotify links; Spotify links need sign-in, YouTube needs only the server key; validation and rate limit; converted CSV imports the same songs including an edited genre |
 | `tests/integration/convert-sources.test.ts` | 14 | Wikidata performer hints confirmed by MusicBrainz, unconfirmed hints only suggested, Wikidata outage; song matching: title + artist (original recording chosen over later re-recordings, live/instrumental/video versions and year-only compilations; soundtracks as albums; only empty fields filled, cache), multi-artist credits, artist-genre fallback, unique vs ambiguous titles, busy MusicBrainz, anonymous match API with 5-row limit, 503 when unconfigured, production contact default; forgiving name lists; link classification; Spotify/YouTube/SoundCloud links via oEmbed with playlist-link guidance and removed videos; YouTube playlists without an account |
 | `tests/ui/convert.test.tsx` | 4 | paste → convert → flag incomplete row → edit genre → download (file contents checked) → hand-off to import via sign-in; link tab guidance per service; Find song details batches, badges and fill-only-empty; UTF-16 and Windows-1252 file decoding |
 | `tests/ui/chat.test.tsx` | 3 | untrusted text not rendered as HTML, safe link attributes, hidden messages, length limit, realtime push, offline send keeps draft |
-| `tests/ui/contrast.test.ts` | 21 | WCAG AA (≥ 4.5:1) for 20 token pairs, brand palette values |
+| `tests/ui/contrast.test.ts` | 25 | WCAG AA (≥ 4.5:1) for 24 token pairs (including the cyan, violet and magenta accents), brand palette values |
 | `tests/security/repository.test.ts` | 8 | .gitignore coverage (incl. signing keys), no keystores in the tree, no database URL in `render.yaml`, placeholder-only .env.example, no secret-looking values, no server secrets or `dangerouslySetInnerHTML` in client code, built bundle free of server config, clean UTF-8 |
 | `tests/unit/service-worker.test.ts` | 4 | `public/sw.js` in a sandbox: never intercepts `/api`, `/ws`, cross-origin or non-GET requests; network-first pages with an offline page; cache-first hashed assets; only the public shell precached; old caches removed |
 
@@ -55,6 +57,19 @@ link chip, library on mobile (no horizontal scroll), map on mobile. Issues found
 IPv6 only, centre-label collisions, mouse-focus outline on map nodes, mojibake from a shell edit, instrument column
 categories, member self-comparison, identical button names for screen readers.
 
+## Manual browser verification (2026-10-15, built-in browser, dev server and production build)
+
+Desktop (≈800 px pane) and mobile emulation (375×812), with a local demo account and the fictional sample library:
+landing (live 3D hero map, holographic headline, genre ticker, scroll reveals, TuneMyMusic guide, four-card
+sections), Music Map in 3D (drag to rotate and tilt, wheel zoom, Spin, Top/Tilt/Side, Depth, Text size, Layers),
+2D and list views, the *Save my map* dialog in all four orientations and three themes (preview canvas inspected at
+full size; pixel alpha sampled to confirm an opaque map area), Convert (guide, tabs, help), Import, Library, Mind,
+Trees, the phone toolbar, and the Android offline page. The production build mounts in about 0.2 s (first paint
+0.25 s). Issues found this way and fixed: a transparent poster map area, labels cut at the poster edge, missing
+select-box arrows, a hidden aurora layer, the save dialog invisible in full screen, a frozen 3D map under StrictMode
+in development, three-plus-one card rows, the wordmark wrapping on phones, and the preview launcher pointing the
+API at Vite's own port.
+
 ## Production database check (2026-10-14)
 
 The production bundle ran locally against the Neon database (`DATABASE_URL` from a git-ignored file): migrations
@@ -69,4 +84,7 @@ genre-vocabulary rows remain, by design).
 * Automated cross-browser visual tests (no Playwright browsers were downloaded; responsive checks were manual).
 * Service-worker registration in a real browser: the desktop app's embedded browser does not support service workers,
   so the worker is verified in the sandbox test above; installing the PWA on a phone is a manual check.
-* The Android APK on a device (built only in GitHub Actions, once the app URL and signing secrets are set).
+* The Android APK on a device (built only in GitHub Actions, once the app URL and signing secrets are set),
+  including saving a poster through the share sheet.
+* Element full screen in a real browser window (the in-page fallback is tested; the Fullscreen API path was not
+  triggered inside the desktop app).

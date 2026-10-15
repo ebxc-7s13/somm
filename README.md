@@ -48,6 +48,26 @@ Exportify CSV, an Apple Music/iTunes exported playlist, M3U/M3U8 or XSPF. **Find
 artist, album, year and genre from MusicBrainz, the open music database. Check every song, download the CSV, then
 import that same file. Details: [`docs/MUSIC_IMPORTS.md`](docs/MUSIC_IMPORTS.md#playlist--csv-converter).
 
+**Easiest way to get your playlists out:** use an external playlist tool such as
+[TuneMyMusic](https://www.tunemymusic.com/home) — sign in to your music service on their site, export your playlists
+to a CSV file, then upload it to Convert or Import. A CSV holding several playlists (with a playlist-name column) is
+split into one CSV per playlist. TuneMyMusic is independent of SOMM; its own terms apply.
+
+## Music Map: 3D, full screen and posters
+
+* **3D view** (default): drag to rotate and tilt, scroll or pinch to zoom, right-drag / Shift+drag or two fingers to
+  pan, twist two fingers to spin; arrow keys, + / − and 0 on the keyboard. **Depth** lifts the rings into a dome,
+  **Top / Tilt / Side** jump to a camera angle, **Spin** auto-rotates. 2D and list views remain (the list is the
+  screen-reader-friendly alternative).
+* **Full screen** for the map stage (in-page full screen where the browser has none, and in the Android app).
+* **Text size** slider (60–220 %) for the labels, plus layers for songs, sound attributes and genre connections —
+  remembered on the device.
+* **Save my map** makes a *Sound of My Mind* poster: portrait 4:5, story 9:16, square or landscape 16:9; flat,
+  3D-tilt or your current angle; Midnight, Holo or Daylight; text and map size; 2× “extra sharp”. Under the map: the
+  SOMM logo, your **@handle**, your top genres, the date and the site. The whole map and its labels are fitted to the
+  frame. Browsers download a PNG (or share it on phones); the Android app opens the share sheet to save it —
+  this needs the app version released with this feature (older APKs explain that and point to the download).
+
 ## Use it as an app
 
 **Android:** download the latest signed APK — <https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk> — open it on your phone and allow the install when
@@ -101,7 +121,8 @@ without credentials says *“Not configured on this server”* instead of preten
 | CSV / Exportify / M3U / XSPF / JSON / pasted list / manual import | ✅ working, tested |
 | Dedupe & versions (provider ID → ISRC → title+artist+version with duration/ISRC conflict checks) | ✅ |
 | Song library (search, filters, sorting, pagination, coverage, provenance, song detail) | ✅ |
-| Music Map (radial layout, LOD, zoom/pan/pinch/keyboard, search, list alternative) | ✅ |
+| Music Map: 3D (rotate/tilt/zoom/pan, depth, camera angles, spin), 2D, list; full screen; text size; layers | ✅ |
+| *Sound of My Mind* poster export (4 orientations, 3 themes, @handle + logo under the map) | ✅ browser-verified · 📱 app saving needs the new APK |
 | Your Music Mind (evidence-backed insights, confidence, inferred vs verified) | ✅ |
 | Transparent matching + Trees (recommend, explain, cluster proposals, create with evidence, join/leave, names) | ✅ |
 | Realtime Tree chat (history, replies, song refs, safe links, rate limits, block/mute, reports, moderation) | ✅ |
@@ -117,7 +138,8 @@ Details: [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) and [`docs/BUILD_REP
 ```
 src/shared/      Pure TypeScript analysis engine (profile, map layout, insights, similarity, Trees) — no I/O
 src/server/      Hono API, PostgreSQL access (node-postgres / PGlite) + migrations, import adapters, enrichment, realtime hub, services
-src/client/      React app (custom router, design tokens, Music Map renderer, pages)
+src/client/      React app (custom router, design tokens, pages); map3d/ = 3D map engine, canvas renderer and posters;
+                 fx/ = motion layer (reveals, tilt cards, cursor effects); styles/fx.scss = glass + holographic styling
 tests/           unit · integration · realtime · ui (jsdom) · security · e2e acceptance workflow
 android/         Capacitor Android shell (opens the hosted app); mobile/www/ holds its offline pages
 public/          Static files: manifest, icons, service worker (sw.js)
@@ -134,6 +156,7 @@ docs/            Product, architecture, data model, imports, analysis, matching,
 [Matching algorithm](docs/MATCHING_ALGORITHM.md) ·
 [Privacy & security](docs/PRIVACY_AND_SECURITY.md) ·
 [Testing](docs/TESTING.md) ·
+[Design audit](docs/DESIGN_AUDIT.md) ·
 [Deployment](docs/DEPLOYMENT.md) ·
 [Cost model](docs/COST_MODEL.md) ·
 [Project status](docs/PROJECT_STATUS.md) ·
@@ -143,4 +166,4 @@ docs/            Product, architecture, data model, imports, analysis, matching,
 
 Demo listeners, demo Trees, the sample library and all test fixtures are **fictional**. Genre/tag data
 from MusicBrainz is CC BY-NC-SA 3.0 (core data CC0); see `docs/MUSIC_IMPORTS.md` before any commercial use.
-Fonts: Sora and Inter (SIL Open Font License), self-hosted.
+Fonts: Unbounded, Space Grotesk, Sora and Inter (SIL Open Font License), self-hosted.

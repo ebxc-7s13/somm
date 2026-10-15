@@ -122,6 +122,24 @@ can check and fix every song, download the file, and import that same file:
 
 A test proves the round trip: converted rows → CSV → import preview yields the same songs and fields.
 
+### Exporting playlists with an external tool (TuneMyMusic)
+
+Most music apps cannot download a playlist. The landing, Convert and Import pages therefore show a large guide that
+points listeners to an external playlist tool, [TuneMyMusic](https://www.tunemymusic.com/home): the listener signs in
+to their music service **on TuneMyMusic's site** (never on SOMM), chooses to export to a file, downloads the CSV, and
+uploads it to Convert (to check and complete every song) or Import (straight onto the map). TuneMyMusic is an
+independent service; its own terms and any plan limits apply, and SOMM receives nothing from it except the file the
+listener uploads. Checked 2026-10-14: its site offers transfers between services and exports to a CSV or TXT file.
+The exact column names of its export were not verified; SOMM reads any CSV with a title and an artist column (see
+the aliases below).
+
+**Several playlists in one CSV.** Export tools may write every playlist into one file with the playlist's name in a
+column (`playlist name`, `playlist`, `playlist title`). The converter splits such a file into one playlist — one CSV —
+per name, in order of first appearance; rows without a name go into a playlist named after the file. Row numbers in
+errors still refer to the original file. Converter CSV uploads may be up to 12 MB and 50,000 rows, and each playlist
+must fit one import (5,000 songs). The importer keeps one playlist per file and adds a note when the file held
+several, pointing to the converter.
+
 ### Pasted names and links
 
 The converter reads pasted lists forgivingly (the import page stays strict): “Artist - Title”, video titles such as
@@ -208,6 +226,7 @@ with `Retry-After` (bounded) and time out after 15 s.
 | bpm | bpm, tempo |
 | instruments / mood / tags | instruments, instrument / mood, moods / tags, tag |
 | uri | track uri, spotify uri, uri, url, link, spotify url, track url |
+| playlist | playlist name, playlist, playlist title (the converter makes one CSV per playlist) |
 
 Multiple artists: split on `;`, `|`, ` / ` and “feat.” — never on `&` or `,` (except Exportify files).
 

@@ -1,4 +1,4 @@
-# Project status (2026-10-14)
+# Project status (2026-10-15)
 
 Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks only · 🔑 blocked on credentials ·
 🟡 partially verified · ⏳ not started
@@ -8,6 +8,8 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | Feature | Status | Notes |
 | --- | --- | --- |
 | Landing page, design system, typographic logo | ✅ | browser-verified desktop + mobile |
+| Visual redesign: liquid glass, holographic Y2K accents, Unbounded/Space Grotesk, live 3D hero map, scroll reveals, tilt cards, magnetic buttons, page transitions | ✅ | browser-verified desktop + mobile; every effect off with *reduce motion*; contrast pairs tested (see [DESIGN_AUDIT.md](DESIGN_AUDIT.md)) |
+| External-export guide (TuneMyMusic) on the landing, Convert and Import pages; multi-playlist CSVs split in the converter | ✅ | split tested with a fictional multi-playlist file; TuneMyMusic's exact CSV headers not verified |
 | Accounts (handle + password), demo mode, sessions | ✅ | |
 | File imports: CSV, Exportify, M3U, XSPF, JSON, pasted, manual | ✅ | |
 | Spotify data-export JSON and Apple Music/iTunes playlist exports | ✅ | parsed with fictional samples of each format; not yet tried with a real export file |
@@ -23,6 +25,8 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | YouTube import (public playlists) | 🧪 / 🔑 | needs an API key; policy review recommended |
 | Apple Music import | 🧪 / 🔑 | needs Apple Developer Program; MusicKit JS login flow UI not wired (server endpoints exist) |
 | Music Map (layout, LOD, interactions, list view) | ✅ | |
+| 3D Music Map (canvas): rotate/tilt/zoom/pan/pinch/twist, keyboard, depth, camera angles, spin, layers, text size, full screen | ✅ | browser-verified desktop + mobile emulation; unit-tested maths (projection, hit-testing, label placement) |
+| *Sound of My Mind* poster (PNG; portrait/story/square/landscape; 3 themes; @handle + logo + stats under the map) | ✅ / 📱 | previews and pixels checked in the browser; Android saving uses the Share + Filesystem plugins — needs the APK built after this change |
 | Your Music Mind (evidence-backed insights) | ✅ | |
 | Transparent matching + configurable weights | ✅ | |
 | Trees: recommend, explain, cluster proposals, create, join/leave, names, related, k-anonymous map | ✅ | |
@@ -48,7 +52,9 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 * On Render's free plan the app sleeps after 15 idle minutes; the next visit waits ~1 minute.
 * The Android app needs a connection (it opens the hosted site); it shows a retry page while the server wakes.
 * Apple Music library import requires a MusicKit JS sign-in screen that is not yet built (catalogue playlist URLs work once configured).
-* The map is SVG; extremely large libraries are capped (160 artists / 600 tracks shown, rest collapsed and listed).
+* The map is capped for very large libraries (160 artists / 600 tracks shown, rest collapsed and listed).
+* The 3D view is a canvas: screen readers use the 2D map (focusable nodes) or the list view, which show the same data.
+* Real element full screen is not used in the Android app (the in-page full screen is), and iPhone Safari has none.
 
 ## Recommended next steps
 
