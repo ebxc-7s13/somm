@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { csvFileName, formatDuration, neutralizeCell, restoreCell, SOMM_CSV_COLUMNS, toSommCsv } from '../../src/shared/csv';
-import { parseCsv } from '../../src/server/import/adapters/files';
+import { parseCsv, parseCsvPlaylists } from '../../src/server/import/adapters/files';
 import { entryToCsvRow } from '../../src/server/import/convert';
 import type { RawEntry } from '../../src/server/import/types';
 
@@ -76,5 +76,43 @@ describe('convert → CSV → import round trip', () => {
     expect(a!.attributes).toEqual(expect.arrayContaining([expect.objectContaining({ value: 'synthesizer' }), { category: 'mood', value: 'dreamy' }]));
     expect(b!.title).toBe('=1+1');
     expect(c!.title).toBe('Line break');
+  });
+});
+
+describe('CSV files holding several playlists', () => {
+  // Some playlist export tools write one row per song with the playlist's name in a column (fictional content).
+  const header = 'Track name,Artist name,Album,Playlist name';
+  const file = [header, 'Glass Orbit,Nova Lattice,Signals,Night Drive', 'Blue Hour,Teo Vance,Sessions,Quiet Hours', ',Kilo Ray,,Night Drive', 'Basement Loop,Kilo Ray,Home Tapes,Night Drive'].join('\r\n');
+
+  it('the converter splits them into one playlist each, keeping file row numbers', () => {
+    const lists = parseCsvPlaylists(file, 'everything.csv');
+    expect(lists.map((p) => [p.name, p.entries.map((e) => e.title)])).toEqual([
+      ['Night Drive', ['Glass Orbit', 'Basement Loop']],
+      ['Quiet Hours', ['Blue Hour']],
+    ]);
+    expect(lists[0]!.errors).toEqual([{ row: 4, message: 'Missing title.' }]);
+    expect(lists[0]!.entries.map((e) => e.row)).toEqual([2, 5]);
+    expect(lists[0]!.notes.join(' ')).toMatch(/2 playlists, each converted to its own CSV/);
+  });
+
+  it('rows without a playlist name, or files without the column, use the file name', () => {
+    const mixed = [header, 'Glass Orbit,Nova Lattice,Signals,', 'Blue Hour,Teo Vance,Sessions,Quiet Hours'].join('\n');
+    expect(parseCsvPlaylists(mixed, 'my-export.csv').map((p) => p.name)).toEqual(['my-export', 'Quiet Hours']);
+    const plain = parseCsvPlaylists('title,artist\nGlass Orbit,Nova Lattice\n', 'plain.csv');
+    expect(plain).toHaveLength(1);
+    expect(plain[0]!.name).toBe('plain');
+    expect(plain[0]!.notes).toEqual([]);
+  });
+
+  it('the importer keeps one playlist and says the file held several', () => {
+    const p = parseCsv(file, 'everything.csv');
+    expect(p.name).toBe('everything');
+    expect(p.entries.map((e) => e.title)).toEqual(['Glass Orbit', 'Blue Hour', 'Basement Loop']);
+    expect(p.notes.join(' ')).toMatch(/2 playlists; they were imported together as one/);
+  });
+
+  it('limits each playlist to what one import can take', () => {
+    const rows = Array.from({ length: 5001 }, (_, i) => `Song ${i},Nova Lattice,,Huge`);
+    expect(() => parseCsvPlaylists([header, ...rows, 'Blue Hour,Teo Vance,,Small'].join('\n'), 'big.csv', 12 * 1024 * 1024)).toThrow(/“Huge” has more than 5000 songs/);
   });
 });

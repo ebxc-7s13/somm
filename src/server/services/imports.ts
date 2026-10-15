@@ -9,7 +9,7 @@ import { classifyEntries, ensureGenre, resolveTrack, type PreviewEntry } from '.
 import { all, get, newId, nowIso, run, tx, type DB } from '../db';
 import { ProviderError } from '../http';
 import type { FetchLike } from '../http';
-import { parseCsv, parseJson, parseJsonPlaylists, parseM3u, parseManual, parseNameList, parseText, parseXspf } from '../import/adapters/files';
+import { parseCsv, parseCsvPlaylists, parseJson, parseJsonPlaylists, parseM3u, parseManual, parseNameList, parseText, parseXspf } from '../import/adapters/files';
 import { containsLinks, resolveLinkList } from '../import/adapters/oembed';
 import { toConverted, type ConvertedPlaylist } from '../import/convert';
 import { parseAppleMusicPlaylist, parseSpotifyPlaylist, parseYouTubePlaylist } from '../import/adapters/urls';
@@ -82,7 +82,10 @@ function providerFailure(err: unknown): unknown {
 
 // ------------------------------------------------------------- conversion
 
-/** Spotify's account-data Playlist1.json holds every playlist, so the converter accepts larger JSON files. */
+/**
+ * Spotify's account-data Playlist1.json and playlist-tool CSV exports can hold
+ * every playlist of an account, so the converter accepts larger JSON and CSV files.
+ */
 export const CONVERT_MAX_JSON_BYTES = 12 * 1024 * 1024;
 
 export const convertSchema = z.discriminatedUnion('source', [
@@ -104,6 +107,7 @@ export async function convertPlaylists(
   fetchImpl?: FetchLike,
 ): Promise<ConvertedPlaylist[]> {
   if (input.source === 'json') return parseJsonPlaylists(input.content, input.fileName ?? 'Imported JSON', CONVERT_MAX_JSON_BYTES).map(toConverted);
+  if (input.source === 'csv') return parseCsvPlaylists(input.content, input.fileName ?? input.name ?? 'Imported CSV', CONVERT_MAX_JSON_BYTES).map(toConverted);
   if (input.source === 'text') {
     const name = input.name ?? 'Pasted list';
     if (containsLinks(input.content)) return [toConverted(await resolveLinkList(input.content, name, fetchImpl))];

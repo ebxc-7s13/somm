@@ -135,6 +135,8 @@ const HEADER_ALIASES: Record<string, string[]> = {
   mood: ['mood', 'moods'],
   tags: ['tags', 'tag'],
   uri: ['track uri', 'spotify uri', 'uri', 'url', 'link', 'spotify url', 'track url'],
+  // Playlist export tools can put several playlists in one file, one row per song.
+  playlist: ['playlist name', 'playlist', 'playlist title'],
 };
 
 function mapHeaders(header: string[]): Record<string, number> {
@@ -158,8 +160,15 @@ function providerIdFromUri(raw: string): RawEntry['providerIds'] {
   return [];
 }
 
-export function parseCsv(text: string, fileName = 'Imported CSV'): RawPlaylist {
-  assertSize(text);
+interface CsvTable {
+  headers: Record<string, number>;
+  /** Data rows with their 1-based row number in the file (the header is row 1). */
+  body: { cells: string[]; row: number }[];
+  isExportify: boolean;
+}
+
+function readCsvTable(text: string, maxBytes?: number): CsvTable {
+  assertSize(text, maxBytes);
   const rows = parseCsvRows(text);
   if (rows.length === 0) throw new ImportError('The file is empty.', 'empty');
   const headers = mapHeaders(rows[0]!);
@@ -170,68 +179,127 @@ export function parseCsv(text: string, fileName = 'Imported CSV'): RawPlaylist {
     );
   }
   const isExportify = rows[0]!.some((h) => h.trim().toLowerCase() === 'artist name(s)');
-  const body = rows.slice(1);
+  const body = rows.slice(1).map((cells, i) => ({ cells, row: i + 2 }));
   if (body.length === 0) throw new ImportError('The file has a header row but no tracks.', 'empty');
-  if (body.length > IMPORT_LIMITS.maxEntries) {
-    throw new ImportError(`Imports are limited to ${IMPORT_LIMITS.maxEntries} tracks per file.`, 'too_large', 413);
-  }
+  return { headers, body, isExportify };
+}
 
+// restoreCell undoes the apostrophe SOMM's converter adds in front of formula-like cells.
+const cellOf = (t: CsvTable, cells: string[], key: string) => (t.headers[key] !== undefined ? restoreCell(cells[t.headers[key]!] ?? '') : undefined);
+
+function csvEntry(t: CsvTable, cells: string[], row: number): RawEntry | ImportRowError {
+  const get = (key: string) => cellOf(t, cells, key);
+  const title = field(get('title'));
+  const artistRaw = field(get('artist'));
+  if (!title || !artistRaw) return { row, message: !title ? 'Missing title.' : 'Missing artist.' };
+  // Exportify joins multiple artists with commas; other files use ; or |.
+  const artists = t.isExportify ? artistRaw.split(/\s*,\s*/).filter(Boolean) : splitArtistList(artistRaw);
+  const attributes: { category: AttributeCategory; value: string }[] = [];
+  for (const v of splitList(get('instruments'))) {
+    // Known vocabulary keeps its real category ("instrumental" is a vocal attribute, not an instrument).
+    const mapped = tagToAttribute(v);
+    attributes.push(mapped ?? { category: 'instrument', value: v.toLowerCase() });
+  }
+  for (const v of splitList(get('mood'))) attributes.push({ category: 'mood', value: v.toLowerCase() });
+  for (const v of splitList(get('tags'))) {
+    const mapped = tagToAttribute(v);
+    if (mapped) attributes.push(mapped);
+  }
+  const uri = get('uri');
+  const ids = (uri ? providerIdFromUri(uri) : undefined) ?? [];
+  return {
+    row,
+    title,
+    artists,
+    album: field(get('album')) || null,
+    durationMs: parseDuration(get('duration')),
+    isrc: parseIsrc(get('isrc')),
+    releaseDate: parseReleaseDate(get('date')),
+    explicit: parseExplicit(get('explicit')),
+    // Exportify's "Artist Genres" column comes from Spotify (artist-level), not from the user.
+    genres: splitList(get('genre')),
+    genreKind: t.isExportify ? 'provider' : 'user',
+    genreSource: t.isExportify ? 'spotify (via export file)' : 'your file',
+    attributes,
+    bpm: parseBpm(get('bpm')),
+    providerIds: ids,
+    sourceUrl: ids[0]?.url ?? null,
+    parseConfidence: 'high',
+  };
+}
+
+function csvPlaylist(t: CsvTable, rows: CsvTable['body'], name: string, fileName: string): RawPlaylist {
   const entries: RawEntry[] = [];
   const errors: ImportRowError[] = [];
-  body.forEach((cells, i) => {
-    const row = i + 2; // 1-based, header is row 1
-    // restoreCell undoes the apostrophe SOMM's converter adds in front of formula-like cells.
-    const get = (key: string) => (headers[key] !== undefined ? restoreCell(cells[headers[key]!] ?? '') : undefined);
-    const title = field(get('title'));
-    const artistRaw = field(get('artist'));
-    if (!title || !artistRaw) {
-      errors.push({ row, message: !title ? 'Missing title.' : 'Missing artist.' });
-      return;
-    }
-    // Exportify joins multiple artists with commas; other files use ; or |.
-    const artists = isExportify ? artistRaw.split(/\s*,\s*/).filter(Boolean) : splitArtistList(artistRaw);
-    const attributes: { category: AttributeCategory; value: string }[] = [];
-    for (const v of splitList(get('instruments'))) {
-      // Known vocabulary keeps its real category ("instrumental" is a vocal attribute, not an instrument).
-      const mapped = tagToAttribute(v);
-      attributes.push(mapped ?? { category: 'instrument', value: v.toLowerCase() });
-    }
-    for (const v of splitList(get('mood'))) attributes.push({ category: 'mood', value: v.toLowerCase() });
-    for (const v of splitList(get('tags'))) {
-      const mapped = tagToAttribute(v);
-      if (mapped) attributes.push(mapped);
-    }
-    const genres = splitList(get('genre'));
-    const uri = get('uri');
-    entries.push({
-      row,
-      title,
-      artists,
-      album: field(get('album')) || null,
-      durationMs: parseDuration(get('duration')),
-      isrc: parseIsrc(get('isrc')),
-      releaseDate: parseReleaseDate(get('date')),
-      explicit: parseExplicit(get('explicit')),
-      // Exportify's "Artist Genres" column comes from Spotify (artist-level), not from the user.
-      genres,
-      genreKind: isExportify ? 'provider' : 'user',
-      genreSource: isExportify ? 'spotify (via export file)' : 'your file',
-      attributes,
-      bpm: parseBpm(get('bpm')),
-      providerIds: uri ? providerIdFromUri(uri) : [],
-      sourceUrl: uri ? providerIdFromUri(uri)?.[0]?.url ?? null : null,
-      parseConfidence: 'high',
-    });
-  });
-  if (entries.length === 0) throw new ImportError('No valid tracks found — every row was missing a title or artist.', 'empty');
+  for (const { cells, row } of rows) {
+    const r = csvEntry(t, cells, row);
+    if ('message' in r) errors.push(r);
+    else entries.push(r);
+  }
   return {
-    name: field(fileName.replace(/\.[a-z0-9]+$/i, '')) || 'Imported CSV',
+    name,
     provider: 'csv',
     sourceRef: field(fileName),
     entries,
     errors,
-    notes: isExportify ? ['Detected an Exportify (Spotify export) file; multiple artists were split on commas.'] : [],
+    notes: t.isExportify ? ['Detected an Exportify (Spotify export) file; multiple artists were split on commas.'] : [],
   };
+}
+
+const csvName = (fileName: string) => field(fileName.replace(/\.[a-z0-9]+$/i, '')) || 'Imported CSV';
+
+/** Rows grouped by the file's playlist-name column, in order of first appearance (one group when there is none). */
+function playlistGroups(t: CsvTable, fallback: string): Map<string, CsvTable['body']> {
+  const groups = new Map<string, CsvTable['body']>();
+  for (const r of t.body) {
+    const name = t.headers.playlist !== undefined ? field(cellOf(t, r.cells, 'playlist')) : '';
+    const key = name || fallback;
+    const list = groups.get(key);
+    if (list) list.push(r);
+    else groups.set(key, [r]);
+  }
+  return groups;
+}
+
+/** One playlist per file (the importer). Files listing several playlists are imported together, with a note. */
+export function parseCsv(text: string, fileName = 'Imported CSV'): RawPlaylist {
+  const t = readCsvTable(text);
+  if (t.body.length > IMPORT_LIMITS.maxEntries) {
+    throw new ImportError(`Imports are limited to ${IMPORT_LIMITS.maxEntries} tracks per file.`, 'too_large', 413);
+  }
+  const p = csvPlaylist(t, t.body, csvName(fileName), fileName);
+  if (p.entries.length === 0) throw new ImportError('No valid tracks found — every row was missing a title or artist.', 'empty');
+  const playlists = playlistGroups(t, csvName(fileName)).size;
+  if (playlists > 1) {
+    p.notes.push(`This file contains ${playlists} playlists; they were imported together as one. The playlist converter can split them into one CSV each.`);
+  }
+  return p;
+}
+
+/** Rows the converter reads from one CSV file, across all of its playlists. */
+export const CSV_CONVERT_MAX_ROWS = 50_000;
+
+/**
+ * The converter: one playlist per value of a "Playlist name" column, as written
+ * by playlist export tools that put several playlists in one file. Files without
+ * that column give a single playlist. Each playlist must fit a single import.
+ */
+export function parseCsvPlaylists(text: string, fileName = 'Imported CSV', maxBytes?: number): RawPlaylist[] {
+  const t = readCsvTable(text, maxBytes);
+  if (t.body.length > CSV_CONVERT_MAX_ROWS) {
+    throw new ImportError(`The converter reads up to ${CSV_CONVERT_MAX_ROWS.toLocaleString('en')} songs per file. Split the file into smaller ones.`, 'too_large', 413);
+  }
+  const groups = playlistGroups(t, csvName(fileName));
+  const playlists: RawPlaylist[] = [];
+  for (const [name, rows] of groups) {
+    if (rows.length > IMPORT_LIMITS.maxEntries) {
+      throw new ImportError(`The playlist “${name}” has more than ${IMPORT_LIMITS.maxEntries} songs, the most one import can take. Split it into smaller files.`, 'too_large', 413);
+    }
+    playlists.push(csvPlaylist(t, rows, name, fileName));
+  }
+  if (!playlists.some((p) => p.entries.length > 0)) throw new ImportError('No valid tracks found — every row was missing a title or artist.', 'empty');
+  if (playlists.length > 1) playlists[0]!.notes.push(`This file contains ${playlists.length} playlists, each converted to its own CSV.`);
+  return playlists;
 }
 
 // ------------------------------------------------------------------ text

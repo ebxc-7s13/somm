@@ -72,6 +72,24 @@ describe('playlist converter API', () => {
     expect(quiet.rows).toHaveLength(1);
   });
 
+  it('splits a CSV with a playlist column into one CSV per playlist; the importer combines them with a note', async () => {
+    // One row per song with the playlist's name in a column, as playlist export tools write (fictional content).
+    const csv = ['Track name,Artist name,Album,Playlist name', 'Glass Orbit,Nova Lattice,Signals,Night Drive', 'Blue Hour,Teo Vance,Sessions,Quiet Hours', 'Basement Loop,Kilo Ray,Home Tapes,Night Drive'].join('\r\n');
+    const { client } = await createTestServer();
+    const r = await client().post('/api/convert', { source: 'csv', content: csv, fileName: 'all-my-playlists.csv' });
+    expect(r.status).toBe(200);
+    expect(r.body.playlists.map((p: any) => [p.name, p.rows.map((x: any) => x.title)])).toEqual([
+      ['Night Drive', ['Glass Orbit', 'Basement Loop']],
+      ['Quiet Hours', ['Blue Hour']],
+    ]);
+    const a = client();
+    await a.signup('combined-csv');
+    const preview = await a.post('/api/imports/preview', { source: 'csv', content: csv, fileName: 'all-my-playlists.csv' });
+    expect(preview.status).toBe(200);
+    expect(preview.body.entries.map((e: any) => e.title)).toEqual(['Glass Orbit', 'Blue Hour', 'Basement Loop']);
+    expect(preview.body.notes.join(' ')).toMatch(/2 playlists; they were imported together as one/);
+  });
+
   it('reads Apple Music / iTunes exported playlists (tab-separated with a header) and ignores file locations', async () => {
     const { client } = await createTestServer();
     const r = await client().post('/api/convert', { source: 'text', content: appleExport, fileName: 'Favourites.txt', name: 'Favourites' });
