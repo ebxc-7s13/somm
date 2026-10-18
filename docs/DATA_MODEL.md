@@ -102,7 +102,7 @@ artists with the same name will share a record (documented limitation).
 | --- | --- |
 | Account | Until the user deletes it (`DELETE /api/me`), which cascades to everything they own |
 | Imported music | Until deleted per playlist or all at once (`DELETE /api/me/library`) |
-| Demo accounts | 24 hours (housekeeping every 15 minutes) |
+| Demo accounts | 24 hours (refused on every request once expired; housekeeping deletes them every 6 hours) |
 | YouTube-derived playlists | 30 days (`data_expires_at`) per YouTube Developer Policies |
 | Drafts / OAuth states / lookup cache | 1 hour / 15 minutes / 7–30 days |
 | Messages | Until the author deletes them or their account |

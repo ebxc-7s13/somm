@@ -13,8 +13,8 @@ for planning; re-check before budgeting — free tiers change).
 | Spotify Web API | no fee; development mode limited to 5 users, owner needs Premium | Spotify Feb 2026 migration guide |
 | Apple Music API | requires paid Apple Developer Program membership | Apple developer documentation (not fetched verbatim) |
 | Cloudflare Realtime TURN | first 1,000 GB/month free (shared with SFU), then $0.05/GB | developers.cloudflare.com/realtime/pricing |
-| Render free web service | $0; 750 instance hours/month; sleeps after 15 min idle (~1 min to wake); WebSockets supported; no persistent disk | render.com/docs/free |
-| Neon free Postgres | $0; suspends when idle; storage and compute-hour caps per project (re-check current numbers) | neon.com/pricing |
+| Render free web service | $0; 750 instance hours/month per workspace (one service full-time); spins down after 15 min without traffic unless kept awake (SOMM pings itself); WebSockets supported; no persistent disk | render.com/docs/free (2026-10-18) |
+| Neon free Postgres | $0; 100 CU-hours/month per project (≈ 400 h at 0.25 CU), 1 GB storage, suspends after 5 min idle | neon.com/docs/introduction/plans (2026-10-18) |
 | GitHub Actions (private repo, Free plan) | 2,000 Linux minutes/month (CI ≈ 3–4 min per push; an APK build ≈ 5–10 min, estimate) | docs.github.com/billing |
 
 ## Assumptions
@@ -53,8 +53,9 @@ for planning; re-check before budgeting — free tiers change).
    in place: one lookup per canonical track for all users, 30-day caching, progressive maps from file metadata. Next:
    self-host a MusicBrainz mirror (open-source server + database dump; needs a VM with ~100 GB disk — assumption) or
    subscribe to the MetaBrainz live data feed; for commercial use also resolve the CC BY-NC-SA genre-tag licence.
-2. **Free-tier limits**: Render's free service sleeps (first visit after idle waits ~1 minute) and Neon's free storage
-   suits roughly the 100-user column; an always-on instance and a paid database tier are the first upgrades. Postgres
+2. **Free-tier limits**: the free Render service is kept awake by self-pings (750 free hours cover one service), and
+   Neon's free compute (≈ 400 awake hours a month) holds because the database only wakes for real use; Neon's free
+   storage suits roughly the 100-user column. A paid database tier is the first upgrade. Postgres
    itself handles this write volume comfortably, and the database is already shared if more instances are added.
 3. **Clustering** is O(n²) on discoverable users per batch run — fine for thousands; block by dominant family beyond that.
 4. **Group video** is not offered: an SFU would make bandwidth a server cost (Cloudflare’s SFU shares the 1,000 GB free tier).

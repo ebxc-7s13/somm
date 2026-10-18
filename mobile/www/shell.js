@@ -13,7 +13,7 @@
 
   function attempt() {
     if (retry) retry.disabled = true;
-    if (status) status.textContent = 'Waking the server… this can take up to a minute.';
+    if (status) status.textContent = 'Connecting to SOMM… right after an update this can take up to a minute.';
     // A no-cors request resolves once the server answers at all, then load the app.
     fetch(url + '/api/health', { mode: 'no-cors', cache: 'no-store' })
       .then(function () {

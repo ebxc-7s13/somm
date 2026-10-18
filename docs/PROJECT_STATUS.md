@@ -49,7 +49,8 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 * Tempo/energy are only available from user files (no permitted provider source).
 * No email, so no password recovery; no 2FA.
 * In-memory rate limiting and WebSocket fan-out assume a single instance.
-* On Render's free plan the app sleeps after 15 idle minutes; the next visit waits ~1 minute.
+* The free Render service is kept awake by self-pings (one service fits Render's 750 free hours); after a deploy or a
+  platform restart the first visit can still wait about a minute.
 * The Android app needs a connection (it opens the hosted site); it shows a retry page while the server wakes.
 * Apple Music library import requires a MusicKit JS sign-in screen that is not yet built (catalogue playlist URLs work once configured).
 * The map is capped for very large libraries (160 artists / 600 tracks shown, rest collapsed and listed).

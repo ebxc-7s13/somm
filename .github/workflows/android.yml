@@ -120,7 +120,7 @@ jobs:
           2. Open it. If Android asks, allow your browser or file manager to install apps.
           3. Open SOMM, then sign up, sign in or tap **Try the demo**.
 
-          Updates install over the previous version (same signing key). The server runs on a free plan and sleeps when idle; if the app shows “Can’t reach SOMM right now”, wait about a minute and tap **Try again**.
+          Updates install over the previous version (same signing key). The server stays awake around the clock; if the app shows “Can’t reach SOMM right now”, check the phone's connection, or wait about a minute while the server restarts after an update, and tap **Try again**.
 
           Prefer not to install anything? Open ${SOMM_APP_URL} in your browser and use **Install app** / **Add to Home Screen**.
 

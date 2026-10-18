@@ -6,7 +6,7 @@ SOMM is one Node.js process serving the API, the WebSocket endpoint and the buil
 | Piece | Free service | Notes |
 | --- | --- | --- |
 | Database | **Neon** PostgreSQL (free plan) | Serverless Postgres; suspends when idle and resumes on the next query |
-| Web app + API + WebSocket | **Render** web service (free plan) | Builds from GitHub; sleeps after 15 minutes without traffic, ~1 minute to wake |
+| Web app + API + WebSocket | **Render** web service (free plan) | Builds from GitHub; kept awake by the server itself (see below) |
 | Installable app | **PWA** (served by the web app) | “Install app” in Chrome/Edge/Android, “Add to Home Screen” on iOS |
 | Android app (APK) | **GitHub Actions** | Signed APK built in the cloud; download it from the repository’s Releases |
 
@@ -64,9 +64,36 @@ The `Deploy to Render` job in `.github/workflows/ci.yml` then calls the hook and
 new commit (Render sets `RENDER_GIT_COMMIT`; the health endpoint returns its first 7 characters as `commit`). Without
 the secret the job only leaves a notice. For a one-off update, use **Manual Deploy → Deploy latest commit** on Render.
 
-Free-plan behaviour to expect: the service sleeps after 15 minutes without requests, and the next visit waits about a
-minute while it wakes; WebSocket connections drop when it sleeps and the client reconnects. Render’s free instances
-have no persistent disk, which is why all data lives in Postgres.
+Render’s free instances have no persistent disk, which is why all data lives in Postgres.
+
+### Always available on free plans
+
+Render spins a free web service down after 15 minutes without inbound traffic, and the next visit then waits about a
+minute. To avoid that, the running server requests its own public URL (`/api/health`) every 10 minutes
+(`src/server/keepawake.ts`); the request leaves Render and comes back through its edge, so it counts as inbound
+traffic. It is on by default on Render (`RENDER_EXTERNAL_URL` is set there); set `KEEP_AWAKE=false` in the service’s
+Environment to turn it off, or `KEEP_AWAKE_URL` to ping another https origin.
+
+Limits to keep in mind (checked 2026-10-18):
+
+* Render gives each workspace **750 free instance hours a month**, enough for one service running full-time (a 31-day
+  month has 744 hours). If the same workspace runs other free services, the hours can run out, and Render then
+  suspends all of the workspace’s free services until the next month — set `KEEP_AWAKE=false` in that case.
+* Neon’s free plan includes **100 compute-unit hours a month**, about 400 hours of its smallest compute, so the
+  database must not stay awake 24/7. The keep-awake ping never touches the database, the enrichment worker sleeps until
+  an import wakes it (it used to check every 5 seconds), and housekeeping runs every 6 hours. Neon therefore still
+  pauses about 5 minutes after the last real visit and resumes in under a second on the next query.
+* Render may still restart a free service at any time (and does on every deploy); it comes back on its own within about
+  a minute, and the Android app shows its retry page meanwhile.
+
+`/api/health` reports `uptimeSeconds`, which shows whether the process has stayed up. Verified 2026-10-18 after the
+deploy: with no visitors for 31 minutes, the service answered immediately with `uptimeSeconds` 1922 (no restart), and
+Neon suspended its compute 5 minutes after the server's start-up queries while the server kept running.
+
+Why not run SOMM entirely on each phone? The personal half (imports, library, map, posters) could run on a device, but
+Trees, chat, calls and listener comparisons need everyone’s data in one shared place, so the app needs a server either
+way, and a phone-only version would split each listener’s data from the community. Keeping the one server available is
+the simpler and more reliable answer.
 
 ## 3. Installable web app (PWA)
 
@@ -83,7 +110,7 @@ Settings → **Install the app** offers the browser’s install prompt where ava
 
 `android/` is a [Capacitor](https://capacitorjs.com) shell that opens the deployed site, so sign-in cookies stay
 first-party and web updates reach the app without a new APK. It bundles two local pages (`mobile/www/`): a “can’t
-reach SOMM” page with a retry button (shown while the free server wakes or when offline) and a setup notice for builds
+reach SOMM” page with a retry button (shown when the phone is offline or the server is restarting) and a setup notice for builds
 without a server URL. The manifest requests microphone/camera for the optional 1:1 calls (Android asks on first use)
 and disables cloud backup of app data.
 
@@ -216,7 +243,7 @@ schedule `pg_dump` and test restores.
 | Symptom | Fix |
 | --- | --- |
 | Blank page at `127.0.0.1:5173` in dev | Vite must bind to `127.0.0.1` (configured); check nothing else uses port 5173/8787 |
-| First request after a while takes ~1 minute | Render’s free service was asleep; the Android app shows a retry page meanwhile |
+| First request takes ~1 minute | The service was restarted or deployed (or `KEEP_AWAKE=false`); the Android app shows a retry page meanwhile |
 | `password authentication failed` / `ENOTFOUND` on start | `DATABASE_URL` is wrong or was pasted with quotes/spaces |
 | 403 “Cross-origin request rejected” | `PUBLIC_URL` does not match the origin in the browser |
 | APK workflow skipped on push | `SOMM_APP_URL` variable not set yet; set it, then run the workflow manually |

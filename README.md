@@ -8,7 +8,8 @@
 | 📱 **Android app** | [Download the latest APK](https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk) · [all releases](https://github.com/ebxc-7s13/somm/releases) |
 | 🎵 **Playlist → CSV converter** | <https://soundofmymind.onrender.com/convert> (no account needed) |
 
-Runs on free plans: the server sleeps after 15 idle minutes, so the first visit can take about a minute to load.
+Runs on free plans and stays available around the clock: the server keeps its free Render service awake, while the
+database still pauses between visits (see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#always-available-on-free-plans)).
 
 SOMM turns a playlist into an interactive **Music Map** of your musical identity, explains what
 your library says about your taste — with the evidence and the source behind every statement —
@@ -71,8 +72,8 @@ split into one CSV per playlist. TuneMyMusic is independent of SOMM; its own ter
 ## Use it as an app
 
 **Android:** download the latest signed APK — <https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk> — open it on your phone and allow the install when
-Android asks. The app opens <https://soundofmymind.onrender.com>; on the free plan the server sleeps when idle, so the
-first visit can take about a minute while it wakes.
+Android asks. The app opens <https://soundofmymind.onrender.com>, which stays awake; if the server has just
+restarted, the app shows a retry page for up to a minute.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ebxc-7s13/somm)
 

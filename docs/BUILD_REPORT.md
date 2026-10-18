@@ -271,7 +271,18 @@ with consented engagement data; add Playwright tests; deploy behind HTTPS with b
 * A live check after deploying found a small font subset inlined as a `data:` URI, which the Content Security Policy
   blocks; fonts are now always emitted as files.
 
-## 19. Git status
+## 19. Phase 5 (2026-10-18): available around the clock on free plans
+
+* The free Render service used to sleep after 15 idle minutes. The server now requests its own public URL every
+  10 minutes (Render counts that as inbound traffic; 750 free hours cover one service full-time), on by default on
+  Render and off with `KEEP_AWAKE=false`.
+* Keeping the server awake must not keep Neon awake (≈ 400 free awake hours a month): the enrichment worker stopped
+  polling the database every 5 seconds and now sleeps until an import wakes it, and housekeeping runs every 6 hours.
+* Running SOMM entirely on phones was considered: the personal features could, but Trees, chat, calls and comparisons
+  need a shared server, so the server stays and is kept available instead.
+* Tests: 256 passing in 22 files.
+
+## 20. Git status
 
 * Website: <https://soundofmymind.onrender.com> · Android: <https://github.com/ebxc-7s13/somm/releases/latest>
 * Branch: `main` on the GitHub repository <https://github.com/ebxc-7s13/somm>, made **public** on 2026-10-14 after a
