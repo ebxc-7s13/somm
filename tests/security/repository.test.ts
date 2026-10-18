@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
-    if (['node_modules', 'dist', '.git', 'data', 'coverage'].includes(name)) continue;
+    if (['node_modules', 'dist', '.vercel', '.git', 'data', 'coverage'].includes(name)) continue;
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p, out);
     else if (/\.(ts|tsx|js|mjs|json|css|html|md|sql|example)$/.test(name) || name === '.gitignore') out.push(p);

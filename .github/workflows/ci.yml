@@ -30,6 +30,8 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: Build and smoke-test the Vercel deployment
+        run: npm run build:vercel && node scripts/smoke-vercel.mjs
 
   deploy:
     name: Deploy to Render

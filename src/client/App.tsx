@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, type ComponentType } from 'react';
+import { useClientConfig } from './clientConfig';
 import { GlobalFx } from './fx/GlobalFx';
 import { CallProvider } from './components/CallOverlay';
 import { Shell } from './components/Shell';
@@ -110,8 +111,10 @@ function Routes() {
 
 function WithCalls() {
   const { me } = useAuth();
+  // Calls need the WebSocket connection, which serverless hosts do not offer.
+  const cfg = useClientConfig();
   return (
-    <CallProvider enabled={!!me}>
+    <CallProvider enabled={!!me && cfg?.realtime === 'ws' && cfg.calls}>
       <Routes />
     </CallProvider>
   );

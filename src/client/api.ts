@@ -1,3 +1,4 @@
+import { loadClientConfig } from './clientConfig';
 /** Thin fetch wrapper. Every failure becomes an ApiError with a code the UI can explain. */
 export class ApiError extends Error {
   constructor(
@@ -14,14 +15,35 @@ export class ApiError extends Error {
   }
 }
 
+/** Bodies below this are never worth compressing (and never need the server's config). */
+const COMPRESS_MIN_CHARS = 256 * 1024;
+
+/**
+ * JSON body for a request. Large uploads (e.g. a whole Spotify data export) are
+ * gzip-compressed when the server asks for it: serverless hosts limit request size.
+ */
+async function encodeBody(body: unknown): Promise<{ data: BodyInit; headers: Record<string, string> }> {
+  const json = JSON.stringify(body);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (json.length < COMPRESS_MIN_CHARS || typeof CompressionStream !== 'function') return { data: json, headers };
+  const cfg = await loadClientConfig();
+  if (cfg.compressAboveBytes === null || json.length <= cfg.compressAboveBytes) return { data: json, headers };
+  const gz = await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
+  if (cfg.maxRequestBytes !== null && gz.size > cfg.maxRequestBytes) {
+    throw new ApiError(413, 'too_large', 'This file is too large to upload. Split it into smaller files and try again.');
+  }
+  return { data: gz, headers: { ...headers, 'Content-Encoding': 'gzip' } };
+}
+
 async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   let res: Response;
+  const encoded = body !== undefined ? await encodeBody(body) : null;
   try {
     res = await fetch(path, {
       method,
       credentials: 'same-origin',
-      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      headers: encoded?.headers,
+      body: encoded?.data,
       signal,
     });
   } catch (err) {

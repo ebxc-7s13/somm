@@ -129,6 +129,8 @@ export const importRoutes = new Hono<Env>()
     const { db, queue } = c.get('ctx');
     const job = await jobProgress(db, user.id, c.req.param('id'));
     if (!job) throw new ApiError(404, 'not_found', 'Import job not found.');
+    // Serverless hosts enrich in bursts; a watched job keeps them going even if a hand-over was lost.
+    if (job.status === 'enriching') queue.kick();
     return c.json({ job, enrichment: { enabled: queue.enabled, reason: queue.disabledReason } });
   })
   .post('/imports/jobs/:id/retry', async (c) => {

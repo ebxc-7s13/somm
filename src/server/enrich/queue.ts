@@ -7,7 +7,7 @@
 import { normalizeText, parseTitle } from '../../shared/normalize';
 import { canonicalGenre, normalizeInstrument, tagToAttribute } from '../../shared/taxonomy';
 import { addExternalId, addTrackAttribute, addTrackGenre } from '../catalog';
-import { all, get, nowIso, run, tx, type DB } from '../db';
+import { all, get, newId, nowIso, run, tx, type DB } from '../db';
 import { ProviderError } from '../http';
 import type { ItunesClient } from './itunes';
 import { pickRecording, weightGenres, type ExtractedRecording, type MusicBrainzClient } from './musicbrainz';
@@ -38,7 +38,26 @@ export interface EnrichmentDeps {
   onUsersChanged: (userIds: string[]) => Promise<void>;
   /** How long the idle worker sleeps before checking again without a kick() (default 6 hours). */
   idleCheckMs?: number;
+  /** Take the shared `worker_leases` lease so processes sharing the database do not enrich the same tracks. */
+  useLease?: boolean;
+  /**
+   * Serverless hosts (Vercel `waitUntil`): run work after the response. When set, kick()
+   * enriches in a burst within the current invocation instead of waking a loop.
+   */
+  background?: (work: Promise<unknown>) => void;
+  /** Serverless hosts: when the current invocation will be stopped (epoch ms), if known. */
+  deadline?: () => number | null;
+  /** Serverless hosts: ask a fresh invocation to carry on when a burst ends with tracks still pending. */
+  continueLater?: () => Promise<void>;
 }
+
+const LEASE = 'enrichment';
+/** Lease lifetime for the long-running worker; renewed with every track. */
+const LEASE_TTL_MS = 2 * 60 * 1000;
+/** Serverless burst length when the platform does not say how long the invocation may run. */
+const BURST_MS = 240 * 1000;
+/** Stop this long before the invocation's deadline, leaving time to save and hand over. */
+const BURST_MARGIN_MS = 25 * 1000;
 
 /** Idle safety check: imports call kick(), so this only catches tracks queued some other way. */
 const IDLE_CHECK_MS = 6 * 3600 * 1000;
@@ -60,6 +79,8 @@ export type EnrichOutcome = 'done' | 'not_found' | 'error' | 'skipped';
 
 export class EnrichmentQueue {
   private running = false;
+  private draining = false;
+  private readonly holder = newId(9);
   private wake: (() => void) | null = null;
   private loop: Promise<void> | null = null;
   private dirtyUsers = new Set<string>();
@@ -93,7 +114,65 @@ export class EnrichmentQueue {
 
   /** Signal that new pending tracks exist. */
   kick() {
+    if (this.deps.background) {
+      if (!this.draining) this.deps.background(this.drainBurst());
+      return;
+    }
     this.wake?.();
+  }
+
+  /** Takes (or renews) the enrichment lease; false while another process holds it. Always true without useLease. */
+  private async acquireLease(ttlMs: number): Promise<boolean> {
+    if (!this.deps.useLease) return true;
+    const row = await get<{ holder: string }>(
+      this.db,
+      `INSERT INTO worker_leases (name, holder, expires_at) VALUES (?, ?, ?)
+       ON CONFLICT (name) DO UPDATE SET holder = excluded.holder, expires_at = excluded.expires_at
+       WHERE worker_leases.expires_at < ? OR worker_leases.holder = excluded.holder
+       RETURNING holder`,
+      [LEASE, this.holder, nowIso(ttlMs), nowIso()],
+    );
+    return row?.holder === this.holder;
+  }
+
+  private async releaseLease() {
+    if (!this.deps.useLease) return;
+    await run(this.db, 'DELETE FROM worker_leases WHERE name = ? AND holder = ?', [LEASE, this.holder]);
+  }
+
+  /**
+   * Serverless hosts: enrich until shortly before the invocation's deadline, saving
+   * progress every 20 tracks, then hand over to a fresh invocation if tracks remain.
+   */
+  async drainBurst(): Promise<number> {
+    if (this.draining) return 0;
+    this.draining = true;
+    let processed = 0;
+    let outOfTime = false;
+    try {
+      const deadline = this.deps.deadline?.() ?? Date.now() + BURST_MS;
+      const stopAt = deadline - BURST_MARGIN_MS;
+      if (!(await this.acquireLease(Math.max(60_000, deadline - Date.now() + 30_000)))) return 0;
+      try {
+        while (Date.now() < stopAt) {
+          if (!(await this.processNext())) break;
+          processed++;
+          if (processed % 20 === 0) await this.flush();
+        }
+        outOfTime = Date.now() >= stopAt;
+      } finally {
+        await this.flush().catch(() => undefined);
+        await this.releaseLease().catch(() => undefined);
+      }
+    } catch (err) {
+      console.error('[somm] enrichment burst error:', err instanceof Error ? err.message : err);
+    } finally {
+      this.draining = false;
+    }
+    if (outOfTime && this.deps.continueLater && (await get(this.db, "SELECT 1 AS one FROM tracks WHERE enrichment_status = 'pending' LIMIT 1"))) {
+      await this.deps.continueLater().catch((err: unknown) => console.error('[somm] enrichment hand-over failed:', err instanceof Error ? err.message : err));
+    }
+    return processed;
   }
 
   /**
@@ -105,16 +184,20 @@ export class EnrichmentQueue {
     let failures = 0;
     while (this.running) {
       let processed = false;
+      let busy = false;
       try {
-        processed = await this.processNext();
+        // Another process sharing the database (e.g. a serverless burst) may be enriching.
+        if (await this.acquireLease(LEASE_TTL_MS)) processed = await this.processNext();
+        else busy = true;
         failures = 0;
       } catch (err) {
         failures++;
         console.error('[somm] enrichment worker error:', err instanceof Error ? err.message : err);
       }
       if (!processed) {
+        if (!busy) await this.releaseLease().catch(() => undefined);
         await this.flush().catch(() => undefined);
-        const wait = failures > 0 ? retryDelay(failures) : (this.deps.idleCheckMs ?? IDLE_CHECK_MS);
+        const wait = failures > 0 ? retryDelay(failures) : busy ? 60_000 : (this.deps.idleCheckMs ?? IDLE_CHECK_MS);
         await new Promise<void>((resolve) => {
           this.wake = resolve;
           setTimeout(resolve, wait).unref?.();

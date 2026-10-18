@@ -14,7 +14,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PGlite } from '@electric-sql/pglite';
+import type { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 
 export type Param = string | number | boolean | null | undefined;
@@ -41,6 +41,8 @@ const NUMERIC = 1700;
 
 async function openPglite(dataDir: string | null, snapshot?: Blob): Promise<DB> {
   if (dataDir) mkdirSync(dataDir, { recursive: true });
+  // Loaded on demand: production (node-postgres) never needs the WebAssembly build.
+  const { PGlite } = await import('@electric-sql/pglite');
   const db = await PGlite.create(dataDir ?? undefined, {
     parsers: { [INT8]: (v: string) => Number(v), [NUMERIC]: (v: string) => Number(v) },
     ...(snapshot ? { loadDataDir: snapshot } : {}),
@@ -66,7 +68,7 @@ async function openPglite(dataDir: string | null, snapshot?: Blob): Promise<DB> 
 
 let pgParsersSet = false;
 
-async function openPg(connectionString: string): Promise<DB> {
+async function openPg(connectionString: string, onPool?: (pool: pg.Pool) => void): Promise<DB> {
   if (!pgParsersSet) {
     pg.types.setTypeParser(INT8, (v) => Number(v));
     pg.types.setTypeParser(NUMERIC, (v) => Number(v));
@@ -88,6 +90,7 @@ async function openPg(connectionString: string): Promise<DB> {
   });
   // Serverless Postgres (e.g. Neon) closes idle connections when it suspends; never crash on that.
   pool.on('error', (err) => console.error('[somm] idle database connection closed:', err.message));
+  onPool?.(pool);
   const wrap = (q: { query: (text: string, values?: unknown[]) => Promise<pg.QueryResult> }): Queryable => ({
     async query(text, values) {
       const r = await q.query(text, values);
@@ -233,13 +236,15 @@ export interface OpenOptions {
   migrate?: boolean;
   /** PGlite only: start from a `dumpDataDir()` snapshot instead of running initdb (tests). */
   snapshot?: Blob;
+  /** node-postgres only: called with the pool once created (serverless hosts manage idle clients). */
+  onPool?: (pool: pg.Pool) => void;
 }
 
 export async function openDatabase(options: OpenOptions = {}): Promise<DB> {
   const url = options.url?.trim();
   const db =
     url && /^postgres(ql)?:\/\//.test(url)
-      ? await openPg(url)
+      ? await openPg(url, options.onPool)
       : await openPglite(!options.dataDir || options.dataDir === 'memory://' ? null : options.dataDir, options.snapshot);
   if (options.migrate !== false) await migrate(db);
   return db;

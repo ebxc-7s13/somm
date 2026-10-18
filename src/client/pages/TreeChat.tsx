@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { api, ApiError, errorMessage } from '../api';
+import { useClientConfig } from '../clientConfig';
 import { DemoBadge } from '../components/Badges';
 import { Icon } from '../components/Icon';
 import { ErrorState, Loading } from '../components/States';
@@ -128,8 +129,45 @@ export function TreeChat({ tree, isModerator }: { tree: TreeSummary; isModerator
     }
   }, [tree.slug, loadLatest]);
 
+  /** Quietly reload the latest page: picks up hidden and deleted messages without a spinner. */
+  const refreshLatest = useCallback(async () => {
+    try {
+      const r = await api.get<{ messages: ChatMessage[]; hasMore: boolean }>(`/api/trees/${tree.slug}/messages?limit=50`);
+      const ids = new Set(r.messages.map((m) => m.id));
+      const oldest = r.messages[0]?.id ?? Infinity;
+      setMessages((prev) => mergeMessages(prev.filter((m) => m.id < oldest || ids.has(m.id)), r.messages));
+    } catch {
+      /* try again on the next tick */
+    }
+  }, [tree.slug]);
+
+  const cfg = useClientConfig();
+  const polling = cfg?.realtime === 'poll';
+
   useEffect(() => {
     void loadLatest();
+  }, [loadLatest]);
+
+  // Serverless hosts have no WebSocket push: check for new messages every few seconds while
+  // the page is visible, and reload the latest page each minute for hidden or deleted ones.
+  useEffect(() => {
+    if (!polling) return;
+    let ticks = 0;
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
+      ticks++;
+      void (ticks % 15 === 0 || !lastId.current ? refreshLatest() : fillGap());
+    };
+    const timer = window.setInterval(tick, 4000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [polling, fillGap, refreshLatest]);
+
+  useEffect(() => {
+    if (!cfg || polling) return;
     const rt = realtime();
     rt.connect();
     rt.subscribe(tree.id);
@@ -151,7 +189,7 @@ export function TreeChat({ tree, isModerator }: { tree: TreeSummary; isModerator
       offs.forEach((off) => off());
       rt.unsubscribe(tree.id);
     };
-  }, [tree.id, loadLatest, fillGap]);
+  }, [cfg, polling, tree.id, fillGap]);
 
   useLayoutEffect(() => {
     const el = logRef.current;
@@ -218,8 +256,8 @@ export function TreeChat({ tree, isModerator }: { tree: TreeSummary; isModerator
     <section className="chat" aria-label={`${tree.name} chat`}>
       <div className="chat-head">
         <strong className="truncate">{tree.name}</strong>
-        <span className="status-pill" data-status={status} role="status" aria-live="polite">
-          {STATUS_TEXT[status]}
+        <span className="status-pill" data-status={polling ? 'open' : status} role="status" aria-live="polite">
+          {polling ? 'Updates every few seconds' : STATUS_TEXT[status]}
         </span>
       </div>
       <div

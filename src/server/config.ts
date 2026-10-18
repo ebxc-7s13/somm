@@ -41,6 +41,14 @@ const schema = z.object({
   // Render sets these automatically for web services.
   RENDER_EXTERNAL_URL: optional,
   RENDER_EXTERNAL_HOSTNAME: optional,
+  // Vercel sets these automatically (VERCEL=1, hostnames without the scheme).
+  VERCEL: optional,
+  VERCEL_URL: optional,
+  VERCEL_PROJECT_PRODUCTION_URL: optional,
+  /** Run as serverless functions without a long-running process (set automatically on Vercel). */
+  SOMM_SERVERLESS: bool(false),
+  /** Vercel Cron sends it as a bearer token to /api/internal/cron when set. */
+  CRON_SECRET: optional,
   DATABASE_URL: optional,
   PGLITE_DATA_DIR: z.string().default('./data/pglite'),
   TRUST_PROXY: bool(false),
@@ -69,6 +77,13 @@ export interface AppConfig {
   isProduction: boolean;
   port: number;
   publicUrl: string;
+  /**
+   * Serverless functions (Vercel): no long-running process, so no WebSocket hub or
+   * background loop. Chat updates by polling, calls are off, and enrichment runs in
+   * bursts after requests.
+   */
+  serverless: boolean;
+  cronSecret: string | null;
   allowedOrigins: string[];
   /** postgres:// URL (production) or null to use PGlite. */
   databaseUrl: string | null;
@@ -106,12 +121,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       throw new Error('MATCH_WEIGHTS must be valid JSON, e.g. {"tracks":0.4,"artists":0.25,"genres":0.2,"attributes":0.15}');
     }
   }
+  const onVercel = parsed.VERCEL === '1';
+  const serverless = parsed.SOMM_SERVERLESS || onVercel;
   const publicUrl = (
     parsed.PUBLIC_URL ??
     parsed.RENDER_EXTERNAL_URL ??
-    (parsed.RENDER_EXTERNAL_HOSTNAME ? `https://${parsed.RENDER_EXTERNAL_HOSTNAME}` : 'http://127.0.0.1:5173')
+    (parsed.RENDER_EXTERNAL_HOSTNAME ? `https://${parsed.RENDER_EXTERNAL_HOSTNAME}` : null) ??
+    (parsed.VERCEL_PROJECT_PRODUCTION_URL ? `https://${parsed.VERCEL_PROJECT_PRODUCTION_URL}` : null) ??
+    'http://127.0.0.1:5173'
   ).replace(/\/$/, '');
   const origins = new Set([publicUrl]);
+  // Vercel also serves each deployment at its own URL.
+  for (const host of [parsed.VERCEL_PROJECT_PRODUCTION_URL, parsed.VERCEL_URL]) if (host) origins.add(`https://${host.replace(/\/$/, '')}`);
   // In development the API is also reachable directly and via the Vite proxy.
   if (parsed.NODE_ENV !== 'production') {
     origins.add(`http://127.0.0.1:${parsed.PORT}`);
@@ -132,10 +153,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     isProduction: parsed.NODE_ENV === 'production',
     port: parsed.PORT,
     publicUrl,
+    serverless,
+    cronSecret: parsed.CRON_SECRET,
     allowedOrigins: [...origins],
     databaseUrl: parsed.DATABASE_URL,
     pgliteDataDir: parsed.PGLITE_DATA_DIR,
-    trustProxy: parsed.TRUST_PROXY || !!parsed.RENDER_EXTERNAL_HOSTNAME,
+    trustProxy: parsed.TRUST_PROXY || !!parsed.RENDER_EXTERNAL_HOSTNAME || onVercel,
     tokenEncryptionKey: key,
     demoModeEnabled: parsed.DEMO_MODE_ENABLED,
     adminHandles: (parsed.ADMIN_HANDLES ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
@@ -148,7 +171,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       keyId: parsed.APPLE_MUSIC_KEY_ID,
       privateKeyPath: parsed.APPLE_MUSIC_PRIVATE_KEY_PATH,
     },
-    calls: { enabled: parsed.CALLS_ENABLED, iceServers, hasTurn: turn.length > 0 && !!parsed.TURN_CREDENTIAL },
+    // Calls need the WebSocket hub, which serverless functions do not run.
+    calls: { enabled: parsed.CALLS_ENABLED && !serverless, iceServers, hasTurn: turn.length > 0 && !!parsed.TURN_CREDENTIAL },
     matchWeights: normalizeWeights(weights),
   };
 }

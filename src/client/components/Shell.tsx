@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { loadClientConfig } from '../clientConfig';
 import { Link, NavLink, useNavigate } from '../router';
 import { realtime } from '../realtime';
 import { useAuth } from '../state';
@@ -36,10 +37,13 @@ export function Shell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!me) return;
+    let alive = true;
     const rt = realtime();
-    rt.connect();
+    // Serverless hosts have no WebSocket server; pages poll instead.
+    void loadClientConfig().then((cfg) => alive && cfg.realtime === 'ws' && rt.connect());
     const off = rt.on('account_deleted', () => window.location.assign('/'));
     return () => {
+      alive = false;
       off();
     };
   }, [me]);

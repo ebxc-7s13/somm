@@ -22,6 +22,7 @@ vi.mock('../../src/client/realtime', () => ({
 }));
 
 const { TreeChat } = await import('../../src/client/pages/TreeChat');
+const { resetClientConfig } = await import('../../src/client/clientConfig');
 
 const tree: TreeSummary = {
   id: 'tree1', slug: 'neon-garden', name: 'Neon Garden', description: '', status: 'active', origin: 'member', color: '#4D7CFF', glyphSeed: 'x',
@@ -35,10 +36,32 @@ const msg = (id: number, body: string, extra: Partial<ChatMessage> = {}): ChatMe
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
   handlers.clear();
+  resetClientConfig();
 });
 
 describe('Tree chat UI', () => {
+  it('polls for new messages on hosts without WebSocket push (Vercel)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const seen: string[] = [];
+    mockApi((url) => {
+      seen.push(url);
+      if (url.startsWith('/api/me')) return ME;
+      if (url.startsWith('/api/client-config')) return { realtime: 'poll', calls: false, compressAboveBytes: 1048576, maxRequestBytes: 4194304 };
+      if (url.includes('after=1')) return { messages: [msg(2, 'arrived by polling')], hasMore: false };
+      return { messages: [msg(1, 'first message')], hasMore: false };
+    });
+    renderWithProviders(<TreeChat tree={tree} isModerator={false} />);
+    expect(await screen.findByText('Updates every few seconds')).toBeInTheDocument();
+    expect(await screen.findByText('first message')).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(4100);
+    expect(await screen.findByText('arrived by polling')).toBeInTheDocument();
+    expect(seen.some((u) => u.includes('/messages?after=1'))).toBe(true);
+    // No socket handlers are registered in polling mode.
+    expect(handlers.size).toBe(0);
+  });
+
   it('renders untrusted message bodies as text and links safely', async () => {
     mockApi((url) => {
       if (url.startsWith('/api/me')) return ME;
