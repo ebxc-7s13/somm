@@ -36,7 +36,14 @@ export interface EnrichmentDeps {
   /** Why enrichment is unavailable, shown to users when musicbrainz is null. */
   disabledReason: string | null;
   onUsersChanged: (userIds: string[]) => Promise<void>;
+  /** How long the idle worker sleeps before checking again without a kick() (default 6 hours). */
+  idleCheckMs?: number;
 }
+
+/** Idle safety check: imports call kick(), so this only catches tracks queued some other way. */
+const IDLE_CHECK_MS = 6 * 3600 * 1000;
+/** After an error (e.g. the database waking up), retry soon, backing off to at most 5 minutes. */
+const retryDelay = (failures: number) => Math.min(5 * 60 * 1000, 5000 * 2 ** Math.min(failures - 1, 6));
 
 interface PendingTrack {
   id: string;
@@ -89,19 +96,28 @@ export class EnrichmentQueue {
     this.wake?.();
   }
 
+  /**
+   * The worker sleeps while nothing is pending and wakes on kick() — it does not poll.
+   * Polling every few seconds would keep a serverless database (Neon) from ever
+   * scaling to zero, which matters once the server itself stays awake.
+   */
   private async run() {
+    let failures = 0;
     while (this.running) {
       let processed = false;
       try {
         processed = await this.processNext();
+        failures = 0;
       } catch (err) {
+        failures++;
         console.error('[somm] enrichment worker error:', err instanceof Error ? err.message : err);
       }
       if (!processed) {
         await this.flush().catch(() => undefined);
+        const wait = failures > 0 ? retryDelay(failures) : (this.deps.idleCheckMs ?? IDLE_CHECK_MS);
         await new Promise<void>((resolve) => {
           this.wake = resolve;
-          setTimeout(resolve, 5000).unref?.();
+          setTimeout(resolve, wait).unref?.();
         });
         this.wake = null;
       }

@@ -134,7 +134,7 @@ export function createApp(ctx: AppContext) {
   // `commit` (set by Render) shows which revision is live after a deploy.
   const commit = process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null;
   app.get('/api/health', (c) =>
-    c.json({ ok: true, version: '0.1.0', commit, enrichment: ctx.queue.enabled, time: new Date().toISOString() }),
+    c.json({ ok: true, version: '0.1.0', commit, enrichment: ctx.queue.enabled, uptimeSeconds: Math.round(process.uptime()), time: new Date().toISOString() }),
   );
   app.route('/api', authRoutes);
   app.route('/api', importRoutes);

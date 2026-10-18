@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { createApp, createAppContext } from './app';
+import { keepAwakeUrl, startKeepAwake } from './keepawake';
 import { loadConfig, loadDotEnv } from './config';
 import { attachWebSocket } from './realtime/ws';
 import { seedDemo } from './seed/demo';
@@ -68,13 +69,21 @@ const tidy = async () => {
   }
 };
 void tidy();
-const housekeepingTimer = setInterval(() => void tidy(), 15 * 60 * 1000);
+// Every 6 hours: expiry is also enforced on each request, and a rarer sweep lets a
+// serverless database scale to zero while the server itself stays awake.
+const housekeepingTimer = setInterval(() => void tidy(), 6 * 3600 * 1000);
 housekeepingTimer.unref();
+
+// Free Render services sleep after 15 idle minutes; keep this one available (see keepawake.ts).
+const awakeOrigin = keepAwakeUrl(process.env);
+const stopKeepAwake = awakeOrigin ? startKeepAwake(awakeOrigin) : () => undefined;
+if (awakeOrigin) console.log(`[somm] keep-awake: pinging ${awakeOrigin}/api/health every 10 minutes`);
 
 async function shutdown(signal: string) {
   console.log(`[somm] ${signal} received, shutting down`);
   setTimeout(() => process.exit(0), 8000).unref();
   clearInterval(housekeepingTimer);
+  stopKeepAwake();
   await ctx.hub.closeAll();
   wss.close();
   await ctx.queue.stop();
