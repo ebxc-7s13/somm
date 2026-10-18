@@ -28,11 +28,9 @@ services:
       # Render generates a random 256-bit key once; it encrypts provider tokens at rest.
       - key: TOKEN_ENCRYPTION_KEY
         generateValue: true
+      # SOMM is public: no demo accounts or fictional listeners in production.
       - key: DEMO_MODE_ENABLED
-        value: "true"
-      # Seeds the fictional demo listeners and Trees once (idempotent), after start-up.
-      - key: SEED_DEMO_ON_START
-        value: "true"
+        value: "false"
       # Optional: an email or URL MusicBrainz can use to contact the operator.
       # Metadata enrichment stays off until it is set.
       - key: MUSICBRAINZ_CONTACT

@@ -26,6 +26,24 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+// Tapping a new-message notification opens (or focuses) SOMM on that Tree's chat.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const raw = (event.notification.data && event.notification.data.url) || '/';
+  const target = new URL(raw, self.location.origin);
+  if (target.origin !== self.location.origin) return;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      for (const client of windows) {
+        if (new URL(client.url).origin === self.location.origin && 'focus' in client) {
+          return client.focus().then((focused) => (focused && 'navigate' in focused ? focused.navigate(target.href) : focused));
+        }
+      }
+      return self.clients.openWindow(target.href);
+    }),
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;

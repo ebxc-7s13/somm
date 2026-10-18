@@ -18,7 +18,7 @@ export function TreeGlyph({ seed, families, size = 72, label }: { seed: string; 
     return { f, a, len, x: 40 + Math.cos(a) * len, y: 40 + Math.sin(a) * len };
   });
   return (
-    <svg width={size} height={size} viewBox="0 0 80 80" role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
+    <svg width={size} height={size} viewBox="0 0 80 80" style={{ flex: 'none' }} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
       <circle cx="40" cy="40" r="38" fill="#0B2266" stroke="rgba(234,240,255,.14)" />
       {branches.map((b, i) => (
         <line key={`l${i}`} x1="40" y1="40" x2={b.x} y2={b.y} stroke={familyColor(b.f.family)} strokeWidth={1.5 + 4 * (b.f.share / total)} strokeLinecap="round" opacity={0.9} />

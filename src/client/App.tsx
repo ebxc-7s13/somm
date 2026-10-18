@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, type ComponentType } from 'react';
 import { useClientConfig } from './clientConfig';
+import { NotificationsProvider } from './notifications';
 import { GlobalFx } from './fx/GlobalFx';
 import { CallProvider } from './components/CallOverlay';
 import { Shell } from './components/Shell';
@@ -126,7 +127,9 @@ export function App() {
       <GlobalFx />
       <ToastProvider>
         <AuthProvider>
-          <WithCalls />
+          <NotificationsProvider>
+            <WithCalls />
+          </NotificationsProvider>
         </AuthProvider>
       </ToastProvider>
     </RouterProvider>

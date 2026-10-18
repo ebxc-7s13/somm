@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { get } from '../../src/server/db';
 import { seedDemo } from '../../src/server/seed/demo';
+import { sampleLibraryCsv } from '../../src/shared/demoCatalog';
 import { createTestServer } from '../helpers/server';
 
 describe('SOMM acceptance workflow', () => {
@@ -20,9 +21,9 @@ describe('SOMM acceptance workflow', () => {
     expect(demo.status).toBe(201);
 
     // 2. Import the fictional sample CSV.
-    const sample = (await me.get('/api/samples/library')).body;
-    expect(sample.note).toMatch(/fictional/);
-    const preview = await me.post('/api/imports/preview', { source: 'csv', content: sample.csv, fileName: sample.fileName });
+    // The fictional sample library is a test fixture only (public SOMM has no sample import).
+    expect((await me.get('/api/samples/library')).status).toBe(404);
+    const preview = await me.post('/api/imports/preview', { source: 'csv', content: sampleLibraryCsv(), fileName: 'somm-fictional-sample.csv' });
     expect(preview.status).toBe(200);
     expect(preview.body.summary.total).toBe(32);
 

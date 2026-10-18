@@ -31,6 +31,13 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     backgroundColor: '#071A52',
   },
+  plugins: {
+    // The app sits between the status bar and the gesture bar (the window is padded
+    // natively; pages do not draw under the bars). Light icons on SOMM's navy.
+    SystemBars: { insetsHandling: 'css', style: 'DARK' },
+    // New messages in your Trees while the app is in the background.
+    LocalNotifications: { smallIcon: 'ic_stat_somm', iconColor: '#5CF2FF' },
+  },
 };
 
 export default config;

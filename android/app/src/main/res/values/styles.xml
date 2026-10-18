@@ -13,6 +13,8 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Shown behind the status bar and the gesture bar: SOMM's navy, so the app never draws under them. -->
+        <item name="android:windowBackground">@color/somm_window</item>
     </style>
 
 

@@ -37,20 +37,12 @@ describe('Landing page', () => {
     expect(screen.getByText('Map your music. Discover your sound. Find your people.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'A Social Mind for Audiophiles' })).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /Map my music/ }).length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Try the demo' })).toBeEnabled();
+    expect(screen.getAllByRole('link', { name: 'Sign in' }).length).toBeGreaterThan(0);
+    // SOMM is public: no demo account on the landing page.
+    expect(screen.queryByRole('button', { name: /demo/i })).not.toBeInTheDocument();
     expect(screen.getByRole('img', { name: /fictional library/ })).toBeInTheDocument();
     expect(screen.getByText(/generated live from a fictional library/)).toBeInTheDocument();
     expect(screen.getByText(/never asks for your Spotify, YouTube or Apple password/)).toBeInTheDocument();
-  });
-
-  it('shows an error if the demo cannot start (network failure)', async () => {
-    mockApi((url) => {
-      if (url.includes('/api/auth/demo')) throw new TypeError('Failed to fetch');
-      return unauthenticated();
-    });
-    renderWithProviders(<Landing />);
-    await userEvent.click(screen.getByRole('button', { name: 'Try the demo' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/Could not reach SOMM/);
   });
 });
 

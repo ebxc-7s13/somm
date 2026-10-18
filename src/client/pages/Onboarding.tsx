@@ -28,7 +28,7 @@ export function Onboarding() {
   return (
     <div className="page">
       <p className="eyebrow">A Social Mind for Audiophiles</p>
-      <h1>Welcome{me?.user.isDemo === 1 ? ' to the SOMM demo' : `, ${me?.user.displayName}`}</h1>
+      <h1>Welcome, {me?.user.displayName}</h1>
       <p className="lead">Import → process → map → Trees. No questionnaire: your first Music Map appears as soon as your tracks are read.</p>
       <ol className="row" aria-label="Progress" style={{ listStyle: 'none', padding: 0, margin: 'var(--space-5) 0' }}>
         {STEPS.map((s, i) => (
@@ -39,12 +39,7 @@ export function Onboarding() {
       </ol>
       {!jobId && (
         <div className="stack">
-          {me?.user.isDemo === 1 && (
-            <p className="small muted">
-              Tip: choose <strong>Fictional sample</strong> to see the whole flow with invented music that overlaps SOMM’s fictional demo listeners.
-            </p>
-          )}
-          <ImportFlow onCommitted={setJobId} initialSource={me?.user.isDemo === 1 ? 'sample' : 'file'} />
+          <ImportFlow onCommitted={setJobId} />
         </div>
       )}
       {jobId && <JobProgressView jobId={jobId} compact onDone={onDone} />}

@@ -1578,3 +1578,369 @@ html.fx-motion .hero-copy > :not(h1) {
     animation: none;
   }
 }
+
+// ============================================================== safe areas
+// Status bar, notch and gesture bar. The Android app pads its window natively and
+// reports 0 here unless a page draws edge to edge; browsers report env(). Never doubled.
+:root {
+  --sa-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --sa-right: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+  --sa-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --sa-left: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+}
+.topbar {
+  height: calc(var(--nav-h) + var(--sa-top));
+  padding-top: var(--sa-top);
+  padding-left: max(var(--space-5), var(--sa-left));
+  padding-right: max(var(--space-5), var(--sa-right));
+}
+.landing-nav {
+  padding-top: calc(var(--space-3) + var(--sa-top));
+}
+.map-stage.is-immersive .map-hud-top {
+  top: calc(12px + var(--sa-top));
+}
+.modal-backdrop {
+  padding: max(16px, var(--sa-top)) max(16px, var(--sa-right)) max(16px, var(--sa-bottom)) max(16px, var(--sa-left));
+}
+
+// ============================================================ account menu
+.menu-wrap {
+  position: relative;
+  min-width: 0;
+}
+.user-btn {
+  max-width: min(46vw, 260px);
+  gap: 8px;
+  svg {
+    flex: none;
+    color: var(--cyan);
+  }
+}
+.menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  padding: 0;
+  border: 0;
+  background: rgba(1, 4, 22, 0.42);
+  cursor: default;
+  animation: fade-in 180ms var(--ease) backwards;
+}
+// Opaque on purpose: menu text must stay readable over maps and photos.
+.menu-pop {
+  position: fixed;
+  top: calc(var(--nav-h) + var(--sa-top) + 6px);
+  right: max(var(--space-5), var(--sa-right));
+  z-index: 61;
+  width: min(300px, calc(100vw - 24px));
+  max-height: calc(100dvh - var(--nav-h) - var(--sa-top) - 24px);
+  overflow-y: auto;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-radius: var(--radius);
+  background: #071140;
+  border: 1px solid rgba(214, 226, 255, 0.22);
+  box-shadow:
+    0 28px 70px -20px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform-origin: top right;
+  animation: menu-in 200ms var(--ease) backwards;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+.menu-head {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 4px;
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: 600 var(--fs-sm) / 1.2 var(--font-ui);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+  svg {
+    flex: none;
+    color: var(--cyan);
+  }
+  &:hover,
+  &:focus-visible {
+    background: rgba(92, 242, 255, 0.1);
+    outline: none;
+  }
+}
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  border: 0;
+  background: var(--line);
+}
+
+// "More" actions inside list rows (member actions) open inline, on their own line:
+// a floating panel would be clipped by the row or hidden behind the tab bar on phones.
+.more-wrap {
+  > summary {
+    list-style: none;
+    &::-webkit-details-marker {
+      display: none;
+    }
+  }
+  &[open] {
+    flex-basis: 100%;
+    display: grid;
+    gap: 8px;
+    justify-items: start;
+  }
+}
+.more-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: #071140;
+  border: 1px solid rgba(214, 226, 255, 0.22);
+  animation: menu-in 180ms var(--ease) backwards;
+}
+
+// ============================================================ badges, toasts
+.count-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: var(--pill);
+  background: var(--magenta);
+  color: #fff;
+  font: 800 0.68rem / 1 var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 12px rgba(255, 90, 216, 0.6);
+}
+.nav a .count-badge {
+  margin-left: 2px;
+}
+.tab-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  .count-badge {
+    position: absolute;
+    top: -7px;
+    left: calc(100% - 8px);
+    box-shadow:
+      0 0 0 2px #040b2e,
+      0 0 12px rgba(255, 90, 216, 0.6);
+  }
+}
+.badge-joined {
+  background: rgba(123, 224, 168, 0.14);
+  color: var(--ok);
+  border: 1px solid rgba(123, 224, 168, 0.45);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  padding: 2px 9px;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+.toast-action {
+  flex: none;
+  margin-left: auto;
+  padding: 7px 14px;
+  border-radius: var(--pill);
+  background: rgba(92, 242, 255, 0.14);
+  color: var(--cyan);
+  font: 700 var(--fs-sm) / 1 var(--font-ui);
+  text-decoration: none;
+  &:hover {
+    background: rgba(92, 242, 255, 0.24);
+  }
+}
+
+// ================================================================ your Trees
+.your-tree-list {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+}
+.your-tree,
+.shared-card {
+  @include glass(0.36, 14px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(214, 226, 255, 0.14);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+.your-tree[data-unread='true'] {
+  border-color: rgba(255, 90, 216, 0.55);
+  box-shadow: 0 18px 40px -26px rgba(255, 90, 216, 0.7);
+}
+.your-tree-main,
+.shared-card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  &:hover strong {
+    text-decoration: underline;
+    text-decoration-color: rgba(92, 242, 255, 0.6);
+  }
+}
+.your-tree-chat {
+  flex: none;
+  gap: 6px;
+  .count-badge {
+    box-shadow: none;
+  }
+}
+
+// ============================================================== shared music
+.shared-grid {
+  display: grid;
+  gap: 10px;
+}
+.shared-card-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(92, 242, 255, 0.3), rgba(155, 123, 255, 0.35) 50%, rgba(255, 90, 216, 0.35));
+  color: #fff;
+}
+.shared-songs {
+  margin: 0;
+  padding: 0 0 0 2.6em;
+  display: grid;
+  li {
+    display: list-item;
+    padding: 9px 4px;
+    border-top: 1px solid var(--line);
+    &::marker {
+      color: var(--text-faint);
+      font-size: var(--fs-xs);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+}
+.shared-song-title {
+  display: block;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.shared-song-meta {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+.msg-ref-playlist {
+  color: var(--cyan);
+  text-decoration: none;
+  border: 1px solid rgba(92, 242, 255, 0.35);
+  &:hover {
+    background: rgba(92, 242, 255, 0.12);
+  }
+}
+
+// ================================================================== phones
+@media (max-width: 760px) {
+  .topbar {
+    padding-left: max(var(--space-4), var(--sa-left));
+    padding-right: max(var(--space-4), var(--sa-right));
+  }
+  // The menu becomes a sheet across the top of the screen.
+  .menu-pop {
+    left: max(10px, var(--sa-left));
+    right: max(10px, var(--sa-right));
+    width: auto;
+    max-height: calc(100dvh - var(--nav-h) - var(--tab-h) - var(--sa-top) - var(--sa-bottom) - 20px);
+    transform-origin: top center;
+  }
+  .menu-item {
+    min-height: 50px;
+    font-size: 1rem;
+  }
+  .user-btn {
+    max-width: 52vw;
+  }
+}
+@media (max-width: 380px) {
+  .your-tree,
+  .shared-card {
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .user-btn svg {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-pop,
+  .more-menu,
+  .menu-scrim {
+    animation: none;
+  }
+}
+
+// Live sound-wave field (fx/LiveField.tsx): above the aurora, under the grain.
+.fx-field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.9;
+}
+
+// Phones: the message box takes the whole first row; share buttons and Send sit under it.
+@media (max-width: 520px) {
+  .composer-row {
+    flex-wrap: wrap;
+    align-items: center;
+    textarea {
+      order: -1;
+      flex: 1 1 100%;
+      min-width: 0;
+    }
+    > .btn-primary {
+      margin-left: auto;
+      min-width: 96px;
+    }
+  }
+}

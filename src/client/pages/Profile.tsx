@@ -1,5 +1,4 @@
 import { api, errorMessage } from '../api';
-import { DemoBadge } from '../components/Badges';
 import { Bars, familyColor } from '../components/Charts';
 import { MusicMap } from '../components/MusicMap';
 import { ErrorState, Loading } from '../components/States';
@@ -39,7 +38,7 @@ export function ProfilePage({ params }: { params: { handle: string } }) {
       <div className="page-head">
         <div>
           <h1 style={{ margin: 0 }}>
-            {u.displayName} {u.isDemo && <DemoBadge what="Fictional demo listener" />}
+            {u.displayName}
           </h1>
           <p className="muted" style={{ margin: 0 }}>
             @{u.handle}

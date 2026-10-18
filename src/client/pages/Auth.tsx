@@ -32,20 +32,6 @@ function AuthForm({ mode }: { mode: 'signin' | 'signup' }) {
     }
   };
 
-  const demo = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post('/api/auth/demo');
-      await refresh();
-      navigate('/welcome', { replace: true });
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="page" style={{ maxWidth: 520 }}>
       <p className="eyebrow">{mode === 'signin' ? 'Welcome back' : 'Join SOMM'}</p>
@@ -114,14 +100,6 @@ function AuthForm({ mode }: { mode: 'signin' | 'signup' }) {
           </Link>
         </div>
       </form>
-      <div className="panel panel-tight" style={{ marginTop: 'var(--space-4)' }}>
-        <div className="row-between">
-          <span className="small muted">Just looking? The demo account is deleted after 24 hours.</span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={demo} disabled={busy}>
-            Try the demo
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

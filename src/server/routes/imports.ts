@@ -5,7 +5,6 @@ import { ApiError, clientIp, rateLimit, requireUser, type Env } from '../context
 import { all } from '../db';
 import { ImportError } from '../import/types';
 import { LIMITS } from '../ratelimit';
-import { sampleLibraryCsv } from '../../shared/demoCatalog';
 import { commitImport, commitSchema, convertPlaylists, convertSchema, jobProgress, previewImport, previewSchema, retryJob } from '../services/imports';
 
 export const importRoutes = new Hono<Env>()
@@ -140,15 +139,6 @@ export const importRoutes = new Hono<Env>()
     queue.kick();
     return c.json({ requeued });
   })
-
-  .get('/samples/library', (c) =>
-    c.json({
-      name: 'SOMM fictional sample library',
-      fileName: 'somm-sample-library.csv',
-      note: 'Every artist and title in this file is fictional. It overlaps with the fictional demo listeners so you can see matching work.',
-      csv: sampleLibraryCsv(),
-    }),
-  )
 
   // ------------------------------------------------- catalogue song search
   .get('/catalog/search', async (c) => {

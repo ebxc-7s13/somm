@@ -614,11 +614,6 @@ a:hover {
   color: var(--charcoal);
   border-color: transparent;
 }
-.badge-demo {
-  background: #3b2a00;
-  color: #ffe58a;
-  border-color: rgba(255, 216, 61, 0.45);
-}
 .badge-verified {
   background: #0d3b2c;
   color: #a6f3cb;

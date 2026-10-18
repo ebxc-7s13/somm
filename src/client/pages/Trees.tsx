@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
-import { DemoBadge } from '../components/Badges';
+import { Icon } from '../components/Icon';
 import { MatchBreakdown, matchLabel, ScoreRing } from '../components/Charts';
 import { EmptyState, ErrorState, Loading } from '../components/States';
 import { TreeGlyph } from '../components/TreeGlyph';
 import { useApi, useDocumentTitle } from '../hooks';
 import { Link, useNavigate } from '../router';
+import { useNotifications } from '../notifications';
 import { useAuth, useToast } from '../state';
-import type { TreeRecommendation, TreeSummary } from '../types';
+import { notificationPermission, requestNotificationPermission, setSystemNotificationsWanted, systemNotificationsWanted, type NotifyPermission } from '../systemNotify';
+import type { MyTree, TreeRecommendation, TreeSummary } from '../types';
 
 function RecommendationCard({ rec, onJoined }: { rec: TreeRecommendation; onJoined: () => void }) {
   const toast = useToast();
@@ -22,7 +24,6 @@ function RecommendationCard({ rec, onJoined }: { rec: TreeRecommendation; onJoin
             <h3 id={`rec-${c.id}`} style={{ margin: 0 }}>
               <Link to={`/trees/${c.slug}`}>{c.name}</Link>
             </h3>
-            {c.isDemo && <DemoBadge what="Demo Tree" />}
             {c.status === 'proposed' && <span className="badge badge-orange">Forming</span>}
           </div>
           <p className="small muted" style={{ margin: '4px 0' }}>
@@ -79,7 +80,8 @@ export function TreeCard({ tree }: { tree: TreeSummary }) {
       <div style={{ minWidth: 0 }}>
         <h3 className="clamp-2">{tree.name}</h3>
         <p className="xsmall muted" style={{ margin: 0 }}>
-          {tree.memberCount} member{tree.memberCount === 1 ? '' : 's'} {tree.isMember && '· joined'}
+          {tree.memberCount} member{tree.memberCount === 1 ? '' : 's'}
+          {tree.isMember && <span className="badge badge-joined" style={{ marginLeft: 6 }}>Joined</span>}
         </p>
         <div className="chips" style={{ marginTop: 6 }}>
           {tree.topGenres.slice(0, 3).map((g) => (
@@ -87,10 +89,86 @@ export function TreeCard({ tree }: { tree: TreeSummary }) {
               {g}
             </span>
           ))}
-          {tree.isDemo && <DemoBadge what="Demo" />}
         </div>
       </div>
     </Link>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/** Offer phone/desktop notifications for new messages (once the listener belongs to a Tree). */
+function NotifyPrompt() {
+  const [permission, setPermission] = useState<NotifyPermission | null>(null);
+  const [wanted, setWanted] = useState(systemNotificationsWanted());
+  useEffect(() => {
+    void notificationPermission().then(setPermission);
+  }, []);
+  if (permission === null || permission === 'unsupported' || permission === 'denied' || (permission === 'granted' && wanted)) return null;
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm"
+      onClick={async () => {
+        const p = await requestNotificationPermission();
+        setPermission(p);
+        const on = p === 'granted';
+        setSystemNotificationsWanted(on);
+        setWanted(on);
+      }}
+    >
+      <Icon name="bell" size={16} /> Notify me about new messages
+    </button>
+  );
+}
+
+function YourTrees() {
+  const mine = useApi<{ trees: MyTree[]; totalUnread: number }>('/api/me/trees');
+  const { totalUnread } = useNotifications();
+  // Badge counts change while you are here: reload the list when they do.
+  useEffect(() => {
+    if (mine.data && mine.data.totalUnread !== totalUnread) mine.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalUnread]);
+  if (mine.loading && !mine.data) return <Loading lines={2} />;
+  if (mine.error) return <ErrorState error={mine.error} onRetry={mine.reload} />;
+  if (!mine.data || mine.data.trees.length === 0) return null;
+  return (
+    <section aria-labelledby="your-trees" className="stack your-trees">
+      <div className="row-between">
+        <h2 id="your-trees" style={{ margin: 0 }}>
+          Your Trees
+        </h2>
+        <NotifyPrompt />
+      </div>
+      <ul className="list-plain your-tree-list">
+        {mine.data.trees.map((t) => (
+          <li key={t.id} className="your-tree" data-unread={t.unread > 0}>
+            <Link to={`/trees/${t.slug}`} className="your-tree-main">
+              <TreeGlyph seed={t.glyphSeed} families={t.families} size={48} />
+              <span style={{ minWidth: 0, flex: 1 }}>
+                <strong className="truncate" style={{ display: 'block' }}>
+                  {t.name}
+                </strong>
+                <span className="xsmall muted truncate" style={{ display: 'block' }}>
+                  {t.lastMessage ? `${t.lastMessage.mine ? 'You' : t.lastMessage.author}: ${t.lastMessage.excerpt} · ${timeAgo(t.lastMessage.createdAt)}` : `${t.memberCount} member${t.memberCount === 1 ? '' : 's'} · no messages yet`}
+                </span>
+              </span>
+            </Link>
+            <Link to={`/trees/${t.slug}/chat`} className="btn btn-blue btn-sm your-tree-chat" aria-label={t.unread ? `Open ${t.name} chat, ${t.unread} new` : `Open ${t.name} chat`}>
+              Chat
+              {t.unread > 0 && <span className="count-badge">{t.unread > 99 ? '99+' : t.unread}</span>}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -176,7 +254,7 @@ function SimilarListeners() {
           <li key={l.handle} className="list-item">
             <ScoreRing score={l.match.score} label={l.match.label} />
             <span style={{ flex: 1, minWidth: 0 }}>
-              <strong>{l.displayName}</strong> <span className="faint small">@{l.handle}</span> {l.isDemo && <DemoBadge />}
+              <strong>{l.displayName}</strong> <span className="faint small">@{l.handle}</span>
               <span className="xsmall muted clamp-2">{l.explanation}</span>
             </span>
             <Link to={`/compare/${l.handle}`} className="btn btn-ghost btn-sm">
@@ -228,7 +306,7 @@ function DiscoverSearch() {
               <ul className="list-plain">
                 {results.listeners.map((l) => (
                   <li key={l.handle}>
-                    <Link to={`/u/${l.handle}`}>{l.displayName}</Link> <span className="faint small">@{l.handle}</span> {l.isDemo && <DemoBadge />}
+                    <Link to={`/u/${l.handle}`}>{l.displayName}</Link> <span className="faint small">@{l.handle}</span>
                   </li>
                 ))}
               </ul>
@@ -260,7 +338,11 @@ export function TreesPage() {
   useDocumentTitle('Discover Trees');
   const recs = useApi<{ recommendations: TreeRecommendation[] }>('/api/trees/recommended');
   const all = useApi<{ trees: TreeSummary[] }>('/api/trees');
-  const reloadAll = () => (recs.reload(), all.reload());
+  const { refresh } = useNotifications();
+  const reloadAll = () => (recs.reload(), all.reload(), void refresh());
+  // Trees you already belong to are listed under "Your Trees", never as suggestions.
+  const explore = (recs.data?.recommendations ?? []).filter((r) => !r.isMember);
+  const others = (all.data?.trees ?? []).filter((t) => !t.isMember);
 
   return (
     <div className="page page-wide">
@@ -273,18 +355,22 @@ export function TreesPage() {
           </p>
         </div>
       </div>
-      <div className="split">
+      <YourTrees />
+      <div className="split" style={{ marginTop: 'var(--space-6)' }}>
         <section aria-labelledby="recs" className="stack">
-          <h2 id="recs">Recommended for you</h2>
+          <h2 id="recs">Explore similar Trees</h2>
+          <p className="small muted" style={{ margin: 0 }}>
+            Trees you have not joined yet, ranked by how well your music fits.
+          </p>
           {recs.loading && !recs.data && <Loading lines={5} />}
           {recs.error && <ErrorState error={recs.error} onRetry={recs.reload} />}
-          {recs.data && recs.data.recommendations.length === 0 && (
-            <EmptyState title="No Trees to recommend yet" action={<Link to="/import" className="btn btn-primary">Import music</Link>}>
-              Recommendations need an imported library and at least one Tree. As more listeners arrive, SOMM proposes Trees from genuinely compatible
-              groups.
+          {recs.data && explore.length === 0 && (
+            <EmptyState title="No new Trees to suggest yet" action={<Link to="/import" className="btn btn-primary">Import music</Link>}>
+              Suggestions need an imported library and Trees you have not joined. As more listeners arrive, SOMM proposes Trees from genuinely
+              compatible groups — or start one below once enough listeners match you.
             </EmptyState>
           )}
-          {recs.data?.recommendations.map((r) => (
+          {explore.map((r) => (
             <RecommendationCard key={r.community.id} rec={r} onJoined={reloadAll} />
           ))}
         </section>
@@ -295,11 +381,11 @@ export function TreesPage() {
         </div>
       </div>
       <section aria-labelledby="all" style={{ marginTop: 'var(--space-7)' }}>
-        <h2 id="all">All Trees</h2>
+        <h2 id="all">More Trees</h2>
         {all.loading && !all.data && <Loading />}
         {all.error && <ErrorState error={all.error} onRetry={all.reload} />}
-        {all.data && all.data.trees.length === 0 && <p className="muted">No public Trees yet.</p>}
-        <div className="grid">{all.data?.trees.map((t) => <TreeCard key={t.id} tree={t} />)}</div>
+        {all.data && others.length === 0 && <p className="muted">No other public Trees yet.</p>}
+        <div className="grid">{others.map((t) => <TreeCard key={t.id} tree={t} />)}</div>
       </section>
     </div>
   );

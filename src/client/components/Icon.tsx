@@ -26,6 +26,7 @@ const PATHS: Record<string, string> = {
   check: 'm5 12 4 4 10-10',
   warning: 'M12 4 2.5 20h19L12 4Zm0 6v4m0 3h.01',
   refresh: 'M20 11a8 8 0 0 0-14.6-4.4L4 8m0-4v4h4M4 13a8 8 0 0 0 14.6 4.4L20 16m0 4v-4h-4',
+  bell: 'M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15L6 16Zm4 4a2 2 0 0 0 4 0',
 };
 
 export function Icon({ name, size = 20, label, className }: { name: keyof typeof PATHS | string; size?: number; label?: string; className?: string }) {

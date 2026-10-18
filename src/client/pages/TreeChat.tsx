@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { isIdle } from '../activity';
 import { api, ApiError, errorMessage } from '../api';
 import { useClientConfig } from '../clientConfig';
-import { DemoBadge } from '../components/Badges';
 import { Icon } from '../components/Icon';
 import { ErrorState, Loading } from '../components/States';
+import { canHover } from '../fx/motion';
 import { realtime, type RealtimeStatus } from '../realtime';
 import { Link } from '../router';
 import { useToast } from '../state';
@@ -149,12 +150,12 @@ export function TreeChat({ tree, isModerator }: { tree: TreeSummary; isModerator
   }, [loadLatest]);
 
   // Serverless hosts have no WebSocket push: check for new messages every few seconds while
-  // the page is visible, and reload the latest page each minute for hidden or deleted ones.
+  // the page is visible and in use, and reload the latest page each minute for hidden or deleted ones.
   useEffect(() => {
     if (!polling) return;
     let ticks = 0;
     const tick = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible' || isIdle()) return;
       ticks++;
       void (ticks % 15 === 0 || !lastId.current ? refreshLatest() : fillGap());
     };
@@ -282,7 +283,6 @@ export function TreeChat({ tree, isModerator }: { tree: TreeSummary; isModerator
             <div className="msg-meta">
               <strong>{m.author.displayName}</strong>
               <span>@{m.author.handle}</span>
-              {m.author.isDemo && <DemoBadge what="Fictional" />}
               <time dateTime={m.createdAt}>{time(m.createdAt)}</time>
             </div>
             {m.replyTo && (
@@ -291,7 +291,12 @@ export function TreeChat({ tree, isModerator }: { tree: TreeSummary; isModerator
               </div>
             )}
             {m.hidden ? <p className="msg-hidden" style={{ margin: 0 }}>This message was hidden pending review.</p> : m.body && <div className="msg-body">{m.body}</div>}
-            {m.ref && !m.hidden && (
+            {m.ref && !m.hidden && m.ref.type === 'playlist' && (
+              <Link to={`/trees/${tree.slug}/music?p=${encodeURIComponent(m.ref.id)}`} className="msg-ref msg-ref-playlist">
+                <Icon name="list" size={14} /> <span className="truncate">Shared playlist: {m.ref.label}</span>
+              </Link>
+            )}
+            {m.ref && !m.hidden && m.ref.type !== 'playlist' && (
               <span className="msg-ref">
                 <Icon name="note" size={14} /> <span className="truncate">{m.ref.label}</span>
               </span>
@@ -386,6 +391,9 @@ export function TreeChat({ tree, isModerator }: { tree: TreeSummary; isModerator
           <button type="button" className="icon-btn" aria-label="Share a track from your library" onClick={() => setPicking((p) => !p)}>
             <Icon name="note" />
           </button>
+          <Link to={`/trees/${tree.slug}/music`} className="icon-btn" aria-label="Share a playlist with this Tree" title="Share a playlist">
+            <Icon name="list" />
+          </Link>
           <label htmlFor="chat-input" className="sr-only">
             Message {tree.name}
           </label>
@@ -397,7 +405,7 @@ export function TreeChat({ tree, isModerator }: { tree: TreeSummary; isModerator
             maxLength={MAX + 50}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Talk about music… (Enter to send, Shift+Enter for a new line)"
+            placeholder={canHover() ? 'Talk about music… (Enter to send, Shift+Enter for a new line)' : 'Talk about music…'}
             aria-describedby="chat-count"
           />
           <button type="button" className="btn btn-primary" onClick={() => void send()} disabled={sending || (!draft.trim() && !ref) || draft.length > MAX}>

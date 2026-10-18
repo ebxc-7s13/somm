@@ -53,7 +53,8 @@ const schema = z.object({
   PGLITE_DATA_DIR: z.string().default('./data/pglite'),
   TRUST_PROXY: bool(false),
   TOKEN_ENCRYPTION_KEY: optional,
-  DEMO_MODE_ENABLED: bool(true),
+  /** Temporary demo accounts: development and tests only — never in production. */
+  DEMO_MODE_ENABLED: bool(false),
   ADMIN_HANDLES: optional,
   MUSICBRAINZ_ENABLED: bool(true),
   MUSICBRAINZ_CONTACT: optional,
@@ -160,7 +161,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     pgliteDataDir: parsed.PGLITE_DATA_DIR,
     trustProxy: parsed.TRUST_PROXY || !!parsed.RENDER_EXTERNAL_HOSTNAME || onVercel,
     tokenEncryptionKey: key,
-    demoModeEnabled: parsed.DEMO_MODE_ENABLED,
+    demoModeEnabled: parsed.DEMO_MODE_ENABLED && parsed.NODE_ENV !== 'production',
     adminHandles: (parsed.ADMIN_HANDLES ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
     musicbrainz: { enabled: parsed.MUSICBRAINZ_ENABLED, contact: parsed.MUSICBRAINZ_CONTACT ?? (parsed.NODE_ENV === 'production' ? PROJECT_URL : null) },
     itunesLookupEnabled: parsed.ITUNES_LOOKUP_ENABLED,

@@ -160,7 +160,7 @@ export interface TreeDetail {
   map: MusicMap | null;
   match: { match: MatchResult; explanation: { summary: string; points: string[] } } | null;
   membership: { role: 'moderator' | 'member' } | null;
-  related: { slug: string; name: string; color: string; memberCount: number; score: number }[];
+  related: { slug: string; name: string; color: string; memberCount: number; score: number; isMember: boolean }[];
   names: { id: string; name: string; votes: number; votedByMe: boolean }[];
 }
 
@@ -171,10 +171,41 @@ export interface ChatMessage {
   body: string | null;
   hidden: boolean;
   replyTo: { id: number; author: string; excerpt: string | null } | null;
-  ref: { type: 'track' | 'artist' | 'album'; id: string; label: string } | null;
+  ref: { type: 'track' | 'artist' | 'album' | 'playlist'; id: string; label: string } | null;
   link: { url: string; provider: string | null } | null;
   createdAt: string;
   mine: boolean;
+}
+
+/** Unread messages and the newest message in one of your Trees. */
+export interface TreeActivity {
+  id: string;
+  slug: string;
+  name: string;
+  unread: number;
+  lastMessage: { id: number; author: string; excerpt: string; createdAt: string; mine: boolean } | null;
+}
+
+export type MyTree = TreeSummary & Pick<TreeActivity, 'unread' | 'lastMessage'>;
+
+/** A playlist a member shared with a Tree. */
+export interface SharedPlaylist {
+  playlistId: string;
+  name: string;
+  trackCount: number;
+  topArtists: string[];
+  sharedBy: { handle: string; displayName: string };
+  sharedAt: string;
+  mine: boolean;
+}
+
+export interface SharedTrack {
+  id: string;
+  title: string;
+  version: string | null;
+  artist: string;
+  album: string | null;
+  year: number | null;
 }
 
 export interface Member {

@@ -30,6 +30,7 @@ import {
   type CommunityRow,
 } from '../services/communities';
 import { loadLibraryTracks, populationFor, readProfile } from '../services/library';
+import { listShares, markRead, removeSharesOnLeave, sharedPlaylistTracks, sharePlaylist, treeActivity, unsharePlaylist } from '../services/treemusic';
 
 async function blockedEitherWay(db: DB, a: string, b: string): Promise<boolean> {
   return !!(await get(
@@ -102,7 +103,7 @@ async function chatErrors<T>(fn: () => T | Promise<T>): Promise<T> {
 const messageSchema = z.object({
   body: z.string().max(4000).default(''),
   replyToId: z.number().int().positive().nullable().optional(),
-  ref: z.object({ type: z.enum(['track', 'artist', 'album']), id: z.string().max(40) }).nullable().optional(),
+  ref: z.object({ type: z.enum(['track', 'artist', 'album', 'playlist']), id: z.string().max(40) }).nullable().optional(),
 });
 
 export const socialRoutes = new Hono<Env>()
@@ -164,7 +165,12 @@ export const socialRoutes = new Hono<Env>()
       map: communityMap(row),
       match,
       membership: user ? (await isMember(db, row.id, user.id)) ?? null : null,
-      related: await relatedCommunities(db, row, config.matchWeights),
+      related: await Promise.all(
+        (await relatedCommunities(db, row, config.matchWeights)).map(async (r) => ({
+          ...r,
+          isMember: user ? !!(await get(db, 'SELECT 1 FROM community_memberships m JOIN communities c ON c.id = m.community_id WHERE c.slug = ? AND m.user_id = ?', [r.slug, user.id])) : false,
+        })),
+      ),
       names: await nameProposals(db, row.id, user?.id ?? null),
     });
   })
@@ -180,6 +186,7 @@ export const socialRoutes = new Hono<Env>()
     const { db, hub } = c.get('ctx');
     const row = await loadTree(c);
     await leaveCommunity(db, row.id, user.id);
+    await removeSharesOnLeave(db, row.id, user.id);
     hub.leaveRoom(user.id, row.id);
     return c.json({ ok: true });
   })
@@ -225,7 +232,68 @@ export const socialRoutes = new Hono<Env>()
     const q = z
       .object({ before: z.coerce.number().int().optional(), after: z.coerce.number().int().optional(), limit: z.coerce.number().int().min(1).max(100).optional() })
       .parse(c.req.query());
-    return c.json(await chatErrors(() => listMessages(c.get('ctx').db, row.id, user.id, q)));
+    const { db } = c.get('ctx');
+    const result = await chatErrors(() => listMessages(db, row.id, user.id, q));
+    // Loading the newest messages marks them read (notifications).
+    const newest = result.messages[result.messages.length - 1]?.id;
+    if (q.before === undefined && newest) await markRead(db, row.id, user.id, newest);
+    return c.json(result);
+  })
+  .post('/trees/:slug/read', async (c) => {
+    const user = requireUser(c);
+    const row = await loadTree(c);
+    const { db } = c.get('ctx');
+    await chatErrors(() => requireMember(db, row.id, user.id));
+    const { lastId } = z.object({ lastId: z.number().int().positive() }).parse(await c.req.json());
+    await markRead(db, row.id, user.id, lastId);
+    return c.json({ ok: true });
+  })
+  // ------------------------------------------------- music shared in Trees
+  .get('/trees/:slug/shares', async (c) => {
+    const user = requireUser(c);
+    const row = await loadTree(c);
+    return c.json({ shares: await chatErrors(() => listShares(c.get('ctx').db, row.id, user.id)) });
+  })
+  .post('/trees/:slug/shares', async (c) => {
+    const user = requireUser(c);
+    const row = await loadTree(c);
+    const { db, hub } = c.get('ctx');
+    rateLimit(c, `msg:${user.id}`, LIMITS.messageBurst);
+    rateLimit(c, `msgh:${user.id}`, LIMITS.messageHourly);
+    const body = z.object({ playlistId: z.string().min(1).max(40), note: z.string().max(1000).default('') }).parse(await c.req.json());
+    const { message } = await chatErrors(() => sharePlaylist(db, row.id, user.id, body.playlistId, body.note));
+    await hub.broadcastMessage(row.id, message);
+    return c.json({ message }, 201);
+  })
+  .get('/trees/:slug/shares/:playlistId', async (c) => {
+    const user = requireUser(c);
+    const row = await loadTree(c);
+    return c.json(await chatErrors(() => sharedPlaylistTracks(c.get('ctx').db, row.id, user.id, c.req.param('playlistId'))));
+  })
+  .delete('/trees/:slug/shares/:playlistId', async (c) => {
+    const user = requireUser(c);
+    const row = await loadTree(c);
+    const { db } = c.get('ctx');
+    const membership = await chatErrors(() => requireMember(db, row.id, user.id));
+    const removed = await unsharePlaylist(db, row.id, user.id, c.req.param('playlistId'), membership.role === 'moderator');
+    if (!removed) throw new ApiError(404, 'not_found', 'Share not found, or not yours.');
+    return c.json({ ok: true });
+  })
+  // ----------------------------------------------- your Trees, notifications
+  .get('/me/trees', async (c) => {
+    const user = requireUser(c);
+    const { db } = c.get('ctx');
+    const activity = await treeActivity(db, user.id);
+    const trees = [];
+    for (const a of activity.trees) {
+      const tree = await getCommunity(db, a.slug);
+      if (tree) trees.push({ ...(await communitySummary(tree, user.id, db)), unread: a.unread, lastMessage: a.lastMessage });
+    }
+    return c.json({ trees, totalUnread: activity.totalUnread });
+  })
+  .get('/notifications', async (c) => {
+    const user = requireUser(c);
+    return c.json(await treeActivity(c.get('ctx').db, user.id));
   })
   .post('/trees/:slug/messages', async (c) => {
     const user = requireUser(c);

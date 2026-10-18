@@ -10,7 +10,7 @@ import { Link, useNavigate, useQuery } from '../router';
 import { useToast } from '../state';
 import type { PreviewEntry, PreviewResult, ProviderStatus } from '../types';
 
-type Source = 'sample' | 'file' | 'paste' | 'manual' | 'spotify' | 'youtube' | 'apple_music';
+type Source = 'file' | 'paste' | 'manual' | 'spotify' | 'youtube' | 'apple_music';
 
 const SOURCES: { id: Source; label: string; provider?: string }[] = [
   { id: 'file', label: 'Upload a file' },
@@ -19,7 +19,6 @@ const SOURCES: { id: Source; label: string; provider?: string }[] = [
   { id: 'spotify', label: 'Spotify', provider: 'spotify' },
   { id: 'youtube', label: 'YouTube', provider: 'youtube' },
   { id: 'apple_music', label: 'Apple Music', provider: 'apple_music' },
-  { id: 'sample', label: 'Fictional sample' },
 ];
 
 const STATE_TEXT: Record<ProviderStatus['state'], string> = {
@@ -390,17 +389,6 @@ export function ImportFlow({ onCommitted, initialSource = 'file' }: { onCommitte
     await run({ source: detectSource(file.name), content: await readTextFile(file), fileName: file.name });
   };
 
-  const sample = async () => {
-    setBusy(true);
-    try {
-      const s = await api.get<{ csv: string; fileName: string }>('/api/samples/library');
-      await run({ source: 'csv', content: s.csv, fileName: s.fileName });
-    } catch (err) {
-      setError(errorMessage(err));
-      setBusy(false);
-    }
-  };
-
   const submitUrl = (e: FormEvent) => {
     e.preventDefault();
     if (url.trim()) void run({ source, playlist: url.trim() });
@@ -487,18 +475,6 @@ export function ImportFlow({ onCommitted, initialSource = 'file' }: { onCommitte
           </div>
         )}
 
-        {source === 'sample' && (
-          <div className="panel">
-            <h3>Try SOMM with a fictional library</h3>
-            <p className="muted">
-              32 invented tracks by invented artists — electronic, ambient and jazz, with a remix, a few missing genres and some instrument tags. It
-              overlaps with SOMM’s fictional demo listeners, so you can see matching and Trees work end to end.
-            </p>
-            <button type="button" className="btn btn-primary" onClick={sample} disabled={busy}>
-              Use the fictional sample library
-            </button>
-          </div>
-        )}
 
         {providerSource && (
           <>

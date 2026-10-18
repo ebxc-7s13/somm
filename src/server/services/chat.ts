@@ -16,7 +16,7 @@ export interface ChatMessage {
   body: string | null;
   hidden: boolean;
   replyTo: { id: number; author: string; excerpt: string | null } | null;
-  ref: { type: 'track' | 'artist' | 'album'; id: string; label: string } | null;
+  ref: { type: 'track' | 'artist' | 'album' | 'playlist'; id: string; label: string } | null;
   link: { url: string; provider: string | null } | null;
   createdAt: string;
   mine: boolean;
@@ -99,7 +99,7 @@ interface MessageRow {
   reply_author: string | null;
   reply_body: string | null;
   reply_hidden: number | null;
-  ref_type: 'track' | 'artist' | 'album' | null;
+  ref_type: 'track' | 'artist' | 'album' | 'playlist' | null;
   ref_id: string | null;
   ref_label: string | null;
   link_url: string | null;
@@ -178,7 +178,7 @@ export async function getMessage(db: DB, id: number, viewerId: string): Promise<
 export interface PostInput {
   body: string;
   replyToId?: number | null;
-  ref?: { type: 'track' | 'artist' | 'album'; id: string } | null;
+  ref?: { type: 'track' | 'artist' | 'album' | 'playlist'; id: string } | null;
 }
 
 export async function postMessage(db: DB, communityId: string, userId: string, input: PostInput): Promise<ChatMessage> {
@@ -206,6 +206,16 @@ export async function postMessage(db: DB, communityId: string, userId: string, i
       );
       if (!t) throw new ChatError('You can only share tracks from your own library.', 400, 'bad_ref');
       ref = { type: 'track', id: input.ref.id, label: `${t.title}${t.version ? ` (${t.version})` : ''} — ${t.artist}` };
+    } else if (input.ref.type === 'playlist') {
+      // Only playlists shared with this Tree can be pointed at.
+      const p = await get<{ name: string; n: number }>(
+        db,
+        `SELECT p.name, (SELECT COUNT(*) FROM playlist_tracks pt WHERE pt.playlist_id = p.id) AS n
+         FROM community_shares s JOIN playlists p ON p.id = s.playlist_id WHERE s.community_id = ? AND s.playlist_id = ?`,
+        [communityId, input.ref.id],
+      );
+      if (!p) throw new ChatError('That playlist is not shared with this Tree.', 400, 'bad_ref');
+      ref = { type: 'playlist', id: input.ref.id, label: `${p.name} · ${p.n} song${p.n === 1 ? '' : 's'}` };
     } else if (input.ref.type === 'artist') {
       const a = await get<{ name: string }>(db, 'SELECT name FROM artists WHERE id = ?', [input.ref.id]);
       if (!a) throw new ChatError('Unknown artist.', 400, 'bad_ref');

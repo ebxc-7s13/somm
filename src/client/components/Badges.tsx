@@ -42,14 +42,6 @@ export function Confidence({ level, label = true }: { level: ConfidenceLevel; la
   );
 }
 
-export function DemoBadge({ what = 'Fictional demo' }: { what?: string }) {
-  return (
-    <span className="badge badge-demo" title="Created by SOMM's demo mode. Not a real person or real music.">
-      {what}
-    </span>
-  );
-}
-
 export function ProviderName({ id }: { id: string }) {
   const names: Record<string, string> = {
     spotify: 'Spotify',

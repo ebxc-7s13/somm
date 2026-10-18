@@ -1,6 +1,5 @@
 import { genreDisplayName } from '../../shared/taxonomy';
 import type { MatchResult } from '../../shared/analysis/similarity';
-import { DemoBadge } from '../components/Badges';
 import { familyColor, MatchBreakdown, matchLabel, ScoreRing } from '../components/Charts';
 import { ErrorState, Loading } from '../components/States';
 import { useApi, useDocumentTitle } from '../hooks';
@@ -33,7 +32,7 @@ export function ComparePage({ params }: { params: { handle: string } }) {
           <ScoreRing score={data.match.score} label={data.match.label} />
           <div>
             <h1 style={{ margin: 0 }}>
-              You & {data.target.displayName} {data.target.isDemo && <DemoBadge />}
+              You & {data.target.displayName}
             </h1>
             <p className="muted" style={{ margin: 0 }}>
               @{data.target.handle} · {matchLabel(data.match.label)}

@@ -1,10 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { buildMusicMap } from '../../shared/analysis/map';
 import { computeProfile } from '../../shared/analysis/profile';
 import { LISTENERS, listenerTracks } from '../../shared/demoCatalog';
 import { canonicalGenre, genreFamily } from '../../shared/taxonomy';
 import type { LibraryTrack } from '../../shared/types';
-import { api, errorMessage } from '../api';
 import { ExternalExportCallout } from '../components/ExternalExport';
 import { Icon } from '../components/Icon';
 import { Logo } from '../components/Logo';
@@ -12,7 +11,7 @@ import { TreeGlyph } from '../components/TreeGlyph';
 import { Marquee, Tilt } from '../fx/Tilt';
 import { useDocumentTitle } from '../hooks';
 import { MusicMap3D } from '../map3d/MusicMap3D';
-import { Link, useNavigate } from '../router';
+import { Link } from '../router';
 import { useAuth } from '../state';
 
 /** A fictional library built in the browser with the real analysis engine. */
@@ -61,24 +60,7 @@ const STEPS = [
 export function Landing() {
   useDocumentTitle('');
   const map = useDemoMap();
-  const { me, refresh } = useAuth();
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const startDemo = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.post('/api/auth/demo');
-      await refresh();
-      navigate('/welcome');
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { me } = useAuth();
 
   return (
     <div className="landing">
@@ -145,19 +127,14 @@ export function Landing() {
                   <Link to="/signup" className="btn btn-primary btn-lg" data-magnetic>
                     Map my music
                   </Link>
-                  <button type="button" className="btn btn-ghost btn-lg" onClick={startDemo} disabled={busy}>
-                    {busy ? 'Starting demo…' : 'Try the demo'}
-                  </button>
+                  <Link to="/signin" className="btn btn-ghost btn-lg">
+                    Sign in
+                  </Link>
                 </>
               )}
             </div>
-            {error && (
-              <p className="error-text" role="alert" style={{ marginTop: 'var(--space-3)' }}>
-                {error}
-              </p>
-            )}
             <p className="small faint" style={{ marginTop: 'var(--space-4)' }}>
-              No email required. SOMM never asks for your Spotify, YouTube or Apple password.
+              Free. No email required. SOMM never asks for your Spotify, YouTube or Apple password.
             </p>
             <p className="small" style={{ marginTop: 'var(--space-2)' }}>
               <Link to="/convert" className="chip-link">

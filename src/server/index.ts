@@ -10,7 +10,6 @@ import { createApp, createAppContext } from './app';
 import { keepAwakeUrl, startKeepAwake } from './keepawake';
 import { loadConfig, loadDotEnv } from './config';
 import { attachWebSocket } from './realtime/ws';
-import { seedDemo } from './seed/demo';
 import { housekeeping } from './services/accounts';
 
 loadDotEnv();
@@ -49,16 +48,6 @@ const server = serve({ fetch: app.fetch, port: config.port, hostname: process.en
 
 const wss = attachWebSocket(server, ctx);
 ctx.queue.start();
-
-// Opt-in: populate the fictional demo community (idempotent) for demo deployments.
-// Runs after the server is listening so health checks pass during a cold start.
-if (process.env.SEED_DEMO_ON_START === 'true') {
-  void seedDemo(ctx.db, config)
-    .then((seeded) => {
-      if (!seeded.skipped) console.log(`[somm] seeded ${seeded.listeners} fictional demo listeners and ${seeded.trees} Trees`);
-    })
-    .catch((err: unknown) => console.error('[somm] demo seeding failed', err instanceof Error ? err.message : err));
-}
 
 const tidy = async () => {
   try {

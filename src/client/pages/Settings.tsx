@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
 import { ErrorState, Loading } from '../components/States';
 import { useApi, useDocumentTitle } from '../hooks';
@@ -6,7 +6,15 @@ import { Link, NavLink, useNavigate } from '../router';
 import { useAuth, useToast } from '../state';
 import type { Playlist, ProviderStatus } from '../types';
 import { realtime } from '../realtime';
-import { useInstallApp } from '../install';
+import { isNativeApp, useInstallApp } from '../install';
+import {
+  notificationPermission,
+  requestNotificationPermission,
+  setSystemNotificationsWanted,
+  showSystemNotification,
+  systemNotificationsWanted,
+  type NotifyPermission,
+} from '../systemNotify';
 
 function InstallPanel() {
   const app = useInstallApp();
@@ -33,6 +41,73 @@ function InstallPanel() {
         <p className="small muted">In Safari, tap Share, then “Add to Home Screen”.</p>
       ) : (
         <p className="small muted">Use your browser’s “Install app” or “Add to Home screen” menu item to install SOMM.</p>
+      )}
+    </section>
+  );
+}
+
+function NotificationsPanel() {
+  const [permission, setPermission] = useState<NotifyPermission | null>(null);
+  const [wanted, setWanted] = useState(systemNotificationsWanted());
+  const toast = useToast();
+  useEffect(() => {
+    void notificationPermission().then(setPermission);
+  }, []);
+  const on = permission === 'granted' && wanted;
+  const where = isNativeApp() ? 'phone' : 'browser';
+
+  const turnOn = async () => {
+    const p = await requestNotificationPermission();
+    setPermission(p);
+    setSystemNotificationsWanted(p === 'granted');
+    setWanted(p === 'granted');
+    if (p === 'granted') toast('Notifications are on.', 'success');
+  };
+
+  return (
+    <section className="panel" aria-labelledby="notify" style={{ marginTop: 'var(--space-6)' }}>
+      <h2 id="notify">Notifications</h2>
+      <p className="small muted">
+        When someone writes in one of your Trees, SOMM shows a notice inside the app and a badge on Trees. With {where} notifications on, you also get
+        one while SOMM is in the background. When SOMM is closed completely, new messages are waiting the next time you open it.
+      </p>
+      {permission === null && <Loading lines={1} />}
+      {permission === 'unsupported' && (
+        <p className="small">
+          {isNativeApp() ? 'This version of the app cannot show notifications — install the latest SOMM app from the GitHub releases page.' : 'This browser cannot show notifications.'}
+        </p>
+      )}
+      {permission === 'denied' && (
+        <p className="small">
+          Notifications are blocked for SOMM. Allow them in your {isNativeApp() ? 'phone settings (Apps → SOMM → Notifications)' : 'browser site settings'}, then come back here.
+        </p>
+      )}
+      {(permission === 'default' || (permission === 'granted' && !wanted)) && (
+        <button type="button" className="btn btn-primary" onClick={() => void turnOn()}>
+          Turn on {where} notifications
+        </button>
+      )}
+      {on && (
+        <div className="row">
+          <span className="badge badge-joined">On</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void showSystemNotification({ title: 'SOMM', body: 'Notifications work. New Tree messages will look like this.', url: '/trees', tag: 'somm-test' })}
+          >
+            Send a test notification
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setSystemNotificationsWanted(false);
+              setWanted(false);
+            }}
+          >
+            Turn off
+          </button>
+        </div>
       )}
     </section>
   );
@@ -113,6 +188,7 @@ export function SettingsPage() {
           )}
         </section>
       </div>
+      <NotificationsPanel />
       <InstallPanel />
       <section aria-labelledby="prov" style={{ marginTop: 'var(--space-6)' }}>
         <h2 id="prov">Music sources & metadata</h2>

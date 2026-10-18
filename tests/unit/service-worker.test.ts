@@ -18,7 +18,13 @@ interface FakeRequest {
 
 type Handler = (event: Record<string, unknown>) => void;
 
-function loadWorker(network: (url: string) => Promise<Response>) {
+interface FakeWindow {
+  url: string;
+  focus: () => Promise<FakeWindow>;
+  navigate: (url: string) => Promise<FakeWindow>;
+}
+
+function loadWorker(network: (url: string) => Promise<Response>, windows: FakeWindow[] = [], opened: string[] = []) {
   const handlers: Record<string, Handler> = {};
   const stores = new Map<string, Map<string, Response>>();
   const keyOf = (r: string | FakeRequest) => new URL(typeof r === 'string' ? r : r.url, ORIGIN).href;
@@ -60,7 +66,11 @@ function loadWorker(network: (url: string) => Promise<Response>) {
     location: new URL(ORIGIN),
     addEventListener: (type: string, fn: Handler) => (handlers[type] = fn),
     skipWaiting: async () => {},
-    clients: { claim: async () => {} },
+    clients: {
+      claim: async () => {},
+      matchAll: async () => windows,
+      openWindow: async (url: string) => void opened.push(url),
+    },
   };
   vm.runInContext(readFileSync('public/sw.js', 'utf8'), vm.createContext({ self, caches, fetch: fetchImpl, URL, Response, Promise, console }));
 
@@ -74,7 +84,14 @@ function loadWorker(network: (url: string) => Promise<Response>) {
     handlers.fetch!({ request: { url: new URL(path, ORIGIN).href, method: 'GET', mode: 'cors', ...init }, respondWith: (p: Promise<Response>) => (responded = p) });
     return responded;
   };
-  return { stores, calls, lifecycle, request };
+  const tapNotification = async (data: unknown) => {
+    let pending: Promise<unknown> = Promise.resolve();
+    let closed = false;
+    handlers.notificationclick!({ notification: { data, close: () => (closed = true) }, waitUntil: (p: Promise<unknown>) => (pending = p) });
+    await pending;
+    return closed;
+  };
+  return { stores, calls, lifecycle, request, tapNotification };
 }
 
 const online = async (url: string) =>
@@ -122,5 +139,24 @@ describe('service worker', () => {
     const cached = [...sw.stores.values()].flatMap((m) => [...m.keys()].map((u) => new URL(u).pathname));
     expect(cached.some((p) => p.startsWith('/api'))).toBe(false);
     expect(cached).toContain('/');
+  });
+
+  it('opens the Tree chat when a message notification is tapped, reusing an open window', async () => {
+    const opened: string[] = [];
+    const sw = loadWorker(online, [], opened);
+    expect(await sw.tapNotification({ url: '/trees/neon-garden/chat' })).toBe(true);
+    expect(opened).toEqual([`${ORIGIN}/trees/neon-garden/chat`]);
+
+    const visited: string[] = [];
+    const win: FakeWindow = { url: `${ORIGIN}/map`, focus: async () => win, navigate: async (u) => (visited.push(u), win) };
+    const reuse = loadWorker(online, [win], opened);
+    await reuse.tapNotification({ url: '/trees/neon-garden/chat' });
+    expect(visited).toEqual([`${ORIGIN}/trees/neon-garden/chat`]);
+    expect(opened).toHaveLength(1);
+
+    // A notification can never send the app to another site.
+    await reuse.tapNotification({ url: 'https://evil.example/phish' });
+    expect(visited).toHaveLength(1);
+    expect(opened).toHaveLength(1);
   });
 });

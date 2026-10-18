@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../api';
-import { DemoBadge } from '../components/Badges';
 import { useCalls } from '../components/CallOverlay';
 import { Bars, familyColor, MatchBreakdown, matchLabel, ScoreRing } from '../components/Charts';
 import { Icon } from '../components/Icon';
@@ -12,6 +11,7 @@ import { Link, NavLink } from '../router';
 import { useToast } from '../state';
 import type { Member, TreeDetail } from '../types';
 import { TreeChat } from './TreeChat';
+import { TreeMusic } from './TreeMusic';
 
 function Overview({ detail, reload }: { detail: TreeDetail; reload: () => void }) {
   const toast = useToast();
@@ -114,12 +114,15 @@ function Overview({ detail, reload }: { detail: TreeDetail; reload: () => void }
         </section>
         {detail.related.length > 0 && (
           <section className="panel" aria-labelledby="related">
-            <h3 id="related">Related Trees</h3>
+            <h3 id="related">Explore similar Trees</h3>
             <ul className="list-plain">
               {detail.related.map((r) => (
                 <li key={r.slug} className="row-between">
                   <Link to={`/trees/${r.slug}`}>{r.name}</Link>
-                  <span className="xsmall faint">{Math.round(r.score * 100)}% similar</span>
+                  <span className="row" style={{ gap: 6 }}>
+                    {r.isMember && <span className="badge badge-joined">Joined</span>}
+                    <span className="xsmall faint">{Math.round(r.score * 100)}% similar</span>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -205,7 +208,7 @@ function Members({ slug, treeId }: { slug: string; treeId: string }) {
           <li key={m.id} className="list-item" style={{ flexWrap: 'wrap' }}>
             <span className="dot" style={{ background: m.online ? 'var(--ok)' : 'var(--text-faint)' }} title={m.online ? 'Online' : 'Offline'} aria-label={m.online ? 'Online' : 'Offline'} role="img" />
             <span style={{ flex: 1, minWidth: 160 }}>
-              <strong>{m.displayName}</strong> <span className="faint small">@{m.handle}</span> {m.role === 'moderator' && <span className="badge badge-yellow">moderator</span>} {m.isDemo && <DemoBadge />}
+              <strong>{m.displayName}</strong> <span className="faint small">@{m.handle}</span> {m.role === 'moderator' && <span className="badge badge-yellow">moderator</span>}
               {m.isYou && <span className="badge">you</span>}
               <span className="xsmall faint" style={{ display: 'block' }}>
                 Joined {new Date(m.joinedAt).toLocaleDateString()}
@@ -222,7 +225,7 @@ function Members({ slug, treeId }: { slug: string; treeId: string }) {
                 <Link to={`/compare/${m.handle}`} className="btn btn-ghost btn-sm">
                   Compare
                 </Link>
-                {calls && callsCfg.data?.enabled && m.online && !m.isDemo && (
+                {calls && callsCfg.data?.enabled && m.online && (
                   <>
                     <button type="button" className="icon-btn" aria-label={`Voice call ${m.displayName}`} onClick={() => void calls.start({ id: m.id, handle: m.handle, displayName: m.displayName }, 'audio', treeId)}>
                       <Icon name="phone" />
@@ -232,11 +235,11 @@ function Members({ slug, treeId }: { slug: string; treeId: string }) {
                     </button>
                   </>
                 )}
-                <details style={{ position: 'relative' }}>
+                <details className="more-wrap">
                   <summary className="btn btn-ghost btn-sm" aria-label={`More actions for ${m.displayName}`}>
                     More
                   </summary>
-                  <div className="panel panel-tight" style={{ position: 'absolute', right: 0, zIndex: 10, display: 'grid', gap: 4, minWidth: 180 }}>
+                  <div className="more-menu">
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => act(() => api.post('/api/blocks', { handle: m.handle, kind: 'mute' }), `Muted @${m.handle}.`)}>
                       Mute
                     </button>
@@ -295,7 +298,8 @@ export function TreePage({ params }: { params: { slug: string; tab?: string } })
               {t.description}
             </p>
             <p className="small faint" style={{ margin: '6px 0 0' }}>
-              {t.memberCount} member{t.memberCount === 1 ? '' : 's'} · {t.origin === 'cluster' ? 'proposed by SOMM from compatible listeners' : 'started by a member'} {t.isDemo && <DemoBadge what="Demo Tree" />}
+              {t.memberCount} member{t.memberCount === 1 ? '' : 's'} · {t.origin === 'cluster' ? 'proposed by SOMM from compatible listeners' : 'started by a member'}
+              {member && <span className="badge badge-joined" style={{ marginLeft: 8 }}>Joined</span>}
             </p>
           </div>
         </div>
@@ -324,17 +328,19 @@ export function TreePage({ params }: { params: { slug: string; tab?: string } })
         <NavLink to={`/trees/${t.slug}`} exact>
           Overview
         </NavLink>
-        <NavLink to={`/trees/${t.slug}/members`}>Members</NavLink>
         <NavLink to={`/trees/${t.slug}/chat`}>Chat</NavLink>
+        <NavLink to={`/trees/${t.slug}/music`}>Music</NavLink>
+        <NavLink to={`/trees/${t.slug}/members`}>Members</NavLink>
       </nav>
       {tab === 'overview' && <Overview detail={data} reload={reload} />}
       {tab !== 'overview' && !member && (
         <EmptyState title="Members only" action={<button type="button" className="btn btn-primary" onClick={toggle} disabled={busy}>Join {t.name}</button>}>
-          The member directory and chat are open to members of this Tree. Joining never publishes your private playlists.
+          The chat, shared music and member directory are open to members of this Tree. Joining never publishes your private playlists.
         </EmptyState>
       )}
       {tab === 'members' && member && <Members slug={t.slug} treeId={t.id} />}
       {tab === 'chat' && member && <TreeChat tree={t} isModerator={data.membership?.role === 'moderator'} />}
+      {tab === 'music' && member && <TreeMusic tree={t} isModerator={data.membership?.role === 'moderator'} />}
     </div>
   );
 }

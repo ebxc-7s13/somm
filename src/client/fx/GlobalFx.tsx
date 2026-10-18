@@ -1,11 +1,12 @@
 /**
- * Site-wide motion layer: aurora backdrop, reveal-on-scroll, a pointer
+ * Site-wide motion layer: aurora backdrop with live sound-wave lines, reveal-on-scroll, a pointer
  * spotlight on glass surfaces, magnetic buttons, a cursor aura and a scroll
  * progress line. Purely decorative; it switches off with "reduce motion", and
  * content never depends on it (reveals only hide content when the browser can
  * reveal it again).
  */
 import { useEffect, useRef } from 'react';
+import { LiveField } from './LiveField';
 import { canHover, useReducedMotion } from './motion';
 
 const SPOTLIGHT = '.panel, .tree-card, .rec-card, .list-item, .choice, .state, .btn, .hud-btn, .fx-card, .callout-xl, .orient-card, .modal';
@@ -128,6 +129,7 @@ export function GlobalFx() {
         <span className="aurora a1" />
         <span className="aurora a2" />
         <span className="aurora a3" />
+        <LiveField />
         <span className="fx-grain" />
       </div>
       <div ref={progress} className="fx-progress" aria-hidden="true" />
