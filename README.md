@@ -8,8 +8,9 @@
 | 📱 **Android app** | [Download the latest APK](https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk) · [all releases](https://github.com/ebxc-7s13/somm/releases) |
 | 🎵 **Playlist → CSV converter** | <https://soundofmymind.onrender.com/convert> (no account needed) |
 
-Runs on free plans and stays available around the clock: the server keeps its free Render service awake, while the
-database still pauses between visits (see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#always-available-on-free-plans)).
+Runs on free plans. On Render the server keeps its free instance awake, which still leaves occasional one-minute
+restarts; SOMM can also run on **Vercel**, where nothing sleeps (static site on the CDN, API as on-demand functions next
+to the database) — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#2b-always-up-vercel-recommended-free).
 
 SOMM turns a playlist into an interactive **Music Map** of your musical identity, explains what
 your library says about your taste — with the evidence and the source behind every statement —
@@ -77,6 +78,8 @@ restarted, the app shows a retry page for up to a minute.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ebxc-7s13/somm)
 
+* **Always-up free hosting:** import the repository on Vercel and add `DATABASE_URL` — `vercel.json` and
+  `scripts/build-vercel.mjs` do the rest ([steps](docs/DEPLOYMENT.md#2b-always-up-vercel-recommended-free)).
 * **Free hosting:** a Render Blueprint ([`render.yaml`](render.yaml)) runs the web app on Render’s free plan with a
   free Neon PostgreSQL database. Step by step: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 * **Install from the browser:** SOMM is a Progressive Web App — use “Install app” (Chrome, Edge, Android) or

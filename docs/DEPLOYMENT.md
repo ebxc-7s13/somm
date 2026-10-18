@@ -95,6 +95,48 @@ Trees, chat, calls and listener comparisons need everyone’s data in one shared
 way, and a phone-only version would split each listener’s data from the community. Keeping the one server available is
 the simpler and more reliable answer.
 
+Keeping one free instance awake still leaves gaps: later the same day `/api/health` reported a fresh process (126
+seconds old) although nothing had been deployed — Render restarted or spun the instance down anyway. For no gaps at
+all, run SOMM on Vercel (next section).
+
+## 2b. Always up: Vercel (recommended, free)
+
+Vercel has no single instance that can sleep: the client is served from its CDN, and the API runs as functions that
+start on demand in well under a second. SOMM builds for Vercel with the Build Output API
+(`npm run build:vercel` → `.vercel/output`, see `scripts/build-vercel.mjs`):
+
+| Piece | On Vercel |
+| --- | --- |
+| Website and app shell | Static files on Vercel’s CDN, with the same security headers as the API |
+| API | One function (`src/vercel/handler.ts`) running the same Hono app, in Singapore (`sin1`) next to the Neon database, up to 5 minutes per request |
+| Song lookups (enrichment) | In bursts after the response (`waitUntil`); near the 5-minute limit a burst hands over to a fresh invocation (`/api/internal/enrich`, authenticated with a secret derived on the server); watching an import also restarts a burst |
+| Tree chat | New messages every 4 seconds while the chat is open (no WebSocket server) |
+| 1:1 calls | Off — they need a long-lived WebSocket connection |
+| Large uploads | Sent gzip-compressed (Vercel accepts 4.5 MB per request; a 12 MB Spotify export compresses well below that) |
+| Housekeeping | Vercel Cron once a day (`/api/internal/cron`) |
+| Database | The same Neon database: the Render and Vercel deployments can run side by side, and a shared lease (`worker_leases`) stops them looking up the same songs twice |
+
+Vercel’s free Hobby plan (checked 2026-10-18) includes 1,000,000 function invocations, 4 hours of active CPU and
+360 GB-hours of memory a month, cron jobs once a day, one function region, and is for non-commercial use — SOMM is
+far inside those limits.
+
+Set up (about five minutes, in the Vercel dashboard):
+
+1. **Add New → Project → Import** the GitHub repository `ebxc-7s13/somm`. Name the project `soundofmymind` so it gets
+   `https://soundofmymind.vercel.app` (if the name is taken, Vercel suggests another).
+2. Leave **Framework Preset** on *Other* and the build settings as they are — `vercel.json` sets the build command.
+3. Under **Environment Variables** add `DATABASE_URL` with the same value as on Render (Render → the service →
+   Environment → `DATABASE_URL`). Optional: `CRON_SECRET` (any long random text; protects the cron endpoint) and
+   `TOKEN_ENCRYPTION_KEY` (same as Render; only needed once Spotify or Apple Music sign-in is configured).
+4. **Deploy**. Then open `https://<your project>.vercel.app/api/health`: it should show `"host":"vercel"` and
+   `"realtime":"poll"`.
+5. Point the Android app at it: GitHub → repository **Settings → Secrets and variables → Actions → Variables** → set
+   `SOMM_APP_URL` to the Vercel address, then run the **Android APK** workflow. Installed apps that open the Render
+   address keep working while Render stays up.
+
+Every push to `main` then deploys to Vercel automatically, alongside the Render deploy hook. CI also builds the Vercel
+output and loads the bundled function (`scripts/smoke-vercel.mjs`) on every push.
+
 ## 3. Installable web app (PWA)
 
 Nothing to configure. The production build serves `manifest.webmanifest`, PNG icons (`npm run icons` regenerates them

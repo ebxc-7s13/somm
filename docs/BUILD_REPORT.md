@@ -281,6 +281,12 @@ with consented engagement data; add Playwright tests; deploy behind HTTPS with b
 * Running SOMM entirely on phones was considered: the personal features could, but Trees, chat, calls and comparisons
   need a shared server, so the server stays and is kept available instead.
 * Tests: 256 passing in 22 files.
+* Later the same day `/api/health` showed a fresh process without a deploy, so the free Render instance can still
+  restart. SOMM now also builds for **Vercel** (Build Output API): the client on the CDN and the same Hono API as one
+  function in Singapore, with chat by polling, calls off, enrichment in `waitUntil` bursts with a hand-over near the
+  5-minute limit, a shared `worker_leases` lease (migration 002) so Render and Vercel never enrich the same tracks,
+  gzip-compressed large uploads, and a daily cron. CI builds the Vercel output and loads the bundled function; the
+  bundle also ran against the production database. Tests: 267 passing in 23 files.
 
 ## 20. Git status
 
