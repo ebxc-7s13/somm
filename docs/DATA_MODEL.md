@@ -70,7 +70,9 @@ never change another person’s data.
 | `communities` | Tree name, slug, description, status (proposed / active / archived), origin (cluster / member), colour + glyph seed, k-anonymised display profile JSON, aggregate vector JSON, member count, candidate IDs for proposed Trees, demo flag | Public when active |
 | `community_memberships` | role (moderator / member), joined date | Community |
 | `community_name_proposals`, `community_name_votes` | naming by majority vote | Community |
-| `community_messages` | body, reply, track/artist/album reference, extracted link + provider, hidden flag/reason; integer IDs for gap-fill | Community |
+| `community_messages` | body, reply, track/artist/album/playlist reference, extracted link + provider, hidden flag/reason; integer IDs for gap-fill | Community |
+| `community_reads` | per member: the last message ID read in that Tree (unread counts and notifications) | Private |
+| `community_shares` | a member's playlist shared with a Tree (who, when); removed with the playlist, on leaving or by a moderator | Community (members) |
 
 ### Safety and calls
 

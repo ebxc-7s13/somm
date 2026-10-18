@@ -39,6 +39,15 @@ Severity: 🔴 blocks a user goal · 🟡 noticeable friction · 🟢 polish
 * Under React's development StrictMode the 3D map stopped drawing after the double mount.
 * Four-card sections wrapped as three plus one; they now use four, two or one columns.
 
+### Found on real phones after launch, and fixed (2026-10-18)
+
+* In the Android app the top bar sat under the status bar (Sign up next to the battery icon): the page requested
+  `viewport-fit=cover` without padding for it. Removed; the window is padded natively and safe-area insets are respected.
+* The account menu was a translucent panel anchored to a small button: hard to read over the map and cramped on
+  phones. It is now an opaque sheet with large (50 px) rows on phones.
+* The member *More* panel was clipped by its row and could hide behind the tab bar; it now opens inline.
+* The chat box was squeezed to a few characters by the share buttons on 360 px screens; it now takes its own row.
+
 ## What worked and was kept
 
 * Every statement about a listener's taste shows its evidence and source; nothing in the redesign hides that.

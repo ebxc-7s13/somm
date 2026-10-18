@@ -92,7 +92,8 @@ No pre-existing files were modified (the repository was empty).
 `import_jobs`, `music_profiles`, `profile_artists`, `profile_tracks`, `profile_genres`, `music_matches`, `communities`,
 `community_memberships`, `community_name_proposals`, `community_name_votes`, `community_messages`, `blocks`, `reports`,
 `calls` — with foreign keys (cascading deletes from users/playlists/communities), indexes for every lookup path and
-check constraints. Privacy classes per table: DATA_MODEL.md.
+check constraints. `002_worker_leases.sql` adds the shared enrichment lease; `003_tree_music_and_unread.sql` adds
+`community_reads` and `community_shares` and allows playlist references in chat. Privacy classes per table: DATA_MODEL.md.
 
 ## 6. Provider integrations and verified capabilities (checked 2026-10-13)
 
@@ -288,9 +289,33 @@ with consented engagement data; add Playwright tests; deploy behind HTTPS with b
   gzip-compressed large uploads, and a daily cron. CI builds the Vercel output and loads the bundled function; the
   bundle also ran against the production database. Tests: 267 passing in 23 files.
 
-## 20. Git status
+## 20. Phase 6 (2026-10-18): public launch
 
-* Website: <https://soundofmymind.onrender.com> · Android: <https://github.com/ebxc-7s13/somm/releases/latest>
+* **Phone fit.** The Android app drew the page under the status bar (the page asked for `viewport-fit=cover` and
+  Android 15+ WebViews honour it), so the top bar's buttons sat behind the clock and battery. The page no longer asks
+  for it, the app window is padded natively (navy behind the bars, light icons) and the CSS also respects safe-area
+  insets. Because the app loads the website, installed apps get the fix without reinstalling.
+* **Menus.** The account menu is now an opaque sheet rendered above the page (full width under the top bar on
+  phones, with a scrim, Escape, arrow keys and focus handling); member actions open inline instead of a floating panel
+  that rows clipped. The chat composer stacks on phones; the Tree emblem no longer shrinks.
+* **Trees.** *Your Trees* (joined, last message, unread count) is separate from *Explore similar Trees* (never joined
+  ones); *Joined* badges; a **Music** tab where members share their playlists and open each other's song lists
+  (migration 003: `community_shares`, playlist references in chat).
+* **Notifications.** Read markers per member (migration 003: `community_reads`), `/api/notifications`, a badge on
+  *Trees*, pop-ups with **Open**, and system notifications while SOMM is in the background — through the service
+  worker on the web and `@capacitor/local-notifications` in the app (APK 0.1.9). Tapping one opens the chat.
+* **Live background.** Sound-wave lines and drifting specks drawn on a canvas: they follow the mouse, ripple on taps
+  and clicks, flow with scrolling; a still frame under *reduce motion*, paused while hidden, 30 fps on touch screens.
+* **No demo in production.** The demo sign-in, the sample library route and its UI are gone; demo mode is refused
+  whenever `NODE_ENV=production`. The 22 fictional listeners and 7 demo Trees were deleted from the production database
+  after a Neon backup branch (`backup-before-demo-removal-2026-10-18`); real accounts and playlists were untouched.
+* Background checks (notifications every 45 s visible / 3 min hidden, chat polling every 4 s) pause after 30 minutes
+  without use, so an open tab cannot keep the free Neon database awake around the clock.
+* Tests: 279 passing in 27 files.
+
+## 21. Git status
+
+* Website: <https://somm-three.vercel.app> (backup <https://soundofmymind.onrender.com>) · Android: <https://github.com/ebxc-7s13/somm/releases/latest>
 * Branch: `main` on the GitHub repository <https://github.com/ebxc-7s13/somm>, made **public** on 2026-10-14 after a
   full-history scan found no secrets, keys or personal identifiers (all commits use the GitHub no-reply address).
 * History: logical commits — tooling scaffold, analysis engine, server, client, documentation, CI update.

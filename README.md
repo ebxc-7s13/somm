@@ -4,13 +4,13 @@
 
 | | |
 | --- | --- |
-| 🌐 **Website** | <https://soundofmymind.onrender.com> |
+| 🌐 **Website** | <https://somm-three.vercel.app> (always on) · backup: <https://soundofmymind.onrender.com> |
 | 📱 **Android app** | [Download the latest APK](https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk) · [all releases](https://github.com/ebxc-7s13/somm/releases) |
-| 🎵 **Playlist → CSV converter** | <https://soundofmymind.onrender.com/convert> (no account needed) |
+| 🎵 **Playlist → CSV converter** | <https://somm-three.vercel.app/convert> (no account needed) |
 
-Runs on free plans. On Render the server keeps its free instance awake, which still leaves occasional one-minute
-restarts; SOMM can also run on **Vercel**, where nothing sleeps (static site on the CDN, API as on-demand functions next
-to the database) — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#2b-always-up-vercel-recommended-free).
+Runs on free plans and is open to the public: **Vercel** serves the site from its CDN and the API as on-demand
+functions next to a free Neon PostgreSQL database, so nothing sleeps. The Render deployment from the same repository
+is kept as a backup — see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#2b-always-up-vercel-recommended-free).
 
 SOMM turns a playlist into an interactive **Music Map** of your musical identity, explains what
 your library says about your taste — with the evidence and the source behind every statement —
@@ -28,12 +28,13 @@ Requires **Node.js ≥ 22.13**. No database server, Docker or paid service is ne
 
 ```bash
 npm install
-npm run seed:demo      # optional: fictional demo listeners + Trees so matching has something to match
+npm run seed:demo      # optional, local only: fictional listeners + Trees so matching has something to match
 npm run dev            # API on 127.0.0.1:8787, app on http://127.0.0.1:5173
 ```
 
-Open <http://127.0.0.1:5173>, click **Try the demo**, choose **Fictional sample**, and follow
-Import → Map → Mind → Trees → Chat. No configuration is needed for file/CSV imports.
+Open <http://127.0.0.1:5173>, create an account (a handle and a password — no email), and follow
+Import → Map → Mind → Trees → Chat. No configuration is needed for file/CSV imports. The fictional seed data and the
+throwaway demo sign-in (`DEMO_MODE_ENABLED=true`) exist for local development only; production never offers them.
 
 Production:
 
@@ -43,7 +44,7 @@ npm run build && npm start   # serves API + WebSocket + built client from one No
 
 ## Playlist → CSV converter
 
-<https://soundofmymind.onrender.com/convert> turns a playlist into SOMM's CSV format — one row per song — with no
+<https://somm-three.vercel.app/convert> turns a playlist into SOMM's CSV format — one row per song — with no
 account. Paste song names, video titles, or Spotify / YouTube / SoundCloud track links (names are read through each
 service's official oEmbed endpoint), or upload Spotify's data export (`Playlist1.json`, one CSV per playlist), an
 Exportify CSV, an Apple Music/iTunes exported playlist, M3U/M3U8 or XSPF. **Find song details** fills in missing
@@ -54,6 +55,18 @@ import that same file. Details: [`docs/MUSIC_IMPORTS.md`](docs/MUSIC_IMPORTS.md#
 [TuneMyMusic](https://www.tunemymusic.com/home) — sign in to your music service on their site, export your playlists
 to a CSV file, then upload it to Convert or Import. A CSV holding several playlists (with a playlist-name column) is
 split into one CSV per playlist. TuneMyMusic is independent of SOMM; its own terms apply.
+
+## Trees: your communities, notifications and shared music
+
+* **Your Trees** lists the Trees you joined, with the latest message and a count of new ones. **Explore similar
+  Trees** only suggests Trees you have not joined, ranked by how well your music fits; joined Trees carry a
+  *Joined* badge everywhere.
+* **Notifications:** a badge on *Trees* in the menu bar, a pop-up with **Open** when a new message arrives, and —
+  after you allow it (Settings → *Notifications*) — phone or desktop notifications while SOMM is in the background.
+  Tapping one opens that Tree's chat. Opening a chat marks it read; muted and blocked people never count.
+* **Share your music:** in a Tree's **Music** tab, share one of your playlists with the Tree (with an optional note).
+  Members open its song list there or from the card posted in the chat; you or a moderator can remove it at any time,
+  and leaving the Tree withdraws your shares. Sharing never changes the playlist's own privacy setting.
 
 ## Music Map: 3D, full screen and posters
 
@@ -73,8 +86,8 @@ split into one CSV per playlist. TuneMyMusic is independent of SOMM; its own ter
 ## Use it as an app
 
 **Android:** download the latest signed APK — <https://github.com/ebxc-7s13/somm/releases/latest/download/somm-android.apk> — open it on your phone and allow the install when
-Android asks. The app opens <https://soundofmymind.onrender.com>, which stays awake; if the server has just
-restarted, the app shows a retry page for up to a minute.
+Android asks. The app opens <https://somm-three.vercel.app> between the status bar and the gesture bar (it never
+draws under them), and can show notifications for new Tree messages once you allow them.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ebxc-7s13/somm)
 
@@ -101,7 +114,7 @@ restarted, the app shows a retry page for up to a minute.
 | `npm run mobile:sync` | Copies the mobile shell into `android/` (for local Android Studio builds) |
 | `npm run typecheck` / `npm run lint` | TypeScript and ESLint |
 | `npm run check` | typecheck + lint + test + build |
-| `npm run seed:demo [-- --reset]` | Seeds 22 **fictional** demo listeners and the Trees the clustering finds |
+| `npm run seed:demo [-- --reset]` | Local development only: seeds 22 **fictional** listeners and the Trees the clustering finds |
 | `npm run trees:generate` | Runs Tree-proposal clustering over discoverable listeners |
 | `npm run smoke:metadata -- "Artist" "Title"` | One live iTunes lookup, plus MusicBrainz if `MUSICBRAINZ_CONTACT` is set |
 | `npm run db:migrate` | Applies SQL migrations |
@@ -130,6 +143,7 @@ without credentials says *“Not configured on this server”* instead of preten
 | Your Music Mind (evidence-backed insights, confidence, inferred vs verified) | ✅ |
 | Transparent matching + Trees (recommend, explain, cluster proposals, create with evidence, join/leave, names) | ✅ |
 | Realtime Tree chat (history, replies, song refs, safe links, rate limits, block/mute, reports, moderation) | ✅ |
+| Your Trees, unread counts, in-app + phone/desktop notifications, music shared in Trees | ✅ tested · 📱 phone notifications need APK 0.1.9+ |
 | Privacy controls, data export, data/account deletion | ✅ |
 | MusicBrainz enrichment | ✅ implemented & mock-tested · ⏳ live run needs `MUSICBRAINZ_CONTACT` |
 | Spotify / YouTube / Apple Music adapters | ✅ implemented & mock-tested · 🔑 need credentials for live use |
@@ -143,7 +157,7 @@ Details: [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) and [`docs/BUILD_REP
 src/shared/      Pure TypeScript analysis engine (profile, map layout, insights, similarity, Trees) — no I/O
 src/server/      Hono API, PostgreSQL access (node-postgres / PGlite) + migrations, import adapters, enrichment, realtime hub, services
 src/client/      React app (custom router, design tokens, pages); map3d/ = 3D map engine, canvas renderer and posters;
-                 fx/ = motion layer (reveals, tilt cards, cursor effects); styles/fx.scss = glass + holographic styling
+                 fx/ = motion layer (live sound-wave background, reveals, tilt cards, cursor effects); styles/fx.scss = glass + holographic styling
 tests/           unit · integration · realtime · ui (jsdom) · security · e2e acceptance workflow
 android/         Capacitor Android shell (opens the hosted app); mobile/www/ holds its offline pages
 public/          Static files: manifest, icons, service worker (sw.js)
@@ -168,6 +182,7 @@ docs/            Product, architecture, data model, imports, analysis, matching,
 
 ## Data and licences
 
-Demo listeners, demo Trees, the sample library and all test fixtures are **fictional**. Genre/tag data
+The local seed data (listeners, Trees, sample library) and all test fixtures are **fictional**; none of it is on the
+public site. Genre/tag data
 from MusicBrainz is CC BY-NC-SA 3.0 (core data CC0); see `docs/MUSIC_IMPORTS.md` before any commercial use.
 Fonts: Unbounded, Space Grotesk, Sora and Inter (SIL Open Font License), self-hosted.

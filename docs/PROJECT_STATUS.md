@@ -1,4 +1,4 @@
-# Project status (2026-10-15)
+# Project status (2026-10-18)
 
 Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks only · 🔑 blocked on credentials ·
 🟡 partially verified · ⏳ not started
@@ -10,7 +10,7 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | Landing page, design system, typographic logo | ✅ | browser-verified desktop + mobile |
 | Visual redesign: liquid glass, holographic Y2K accents, Unbounded/Space Grotesk, live 3D hero map, scroll reveals, tilt cards, magnetic buttons, page transitions | ✅ | browser-verified desktop + mobile; every effect off with *reduce motion*; contrast pairs tested (see [DESIGN_AUDIT.md](DESIGN_AUDIT.md)) |
 | External-export guide (TuneMyMusic) on the landing, Convert and Import pages; multi-playlist CSVs split in the converter | ✅ | split tested with a fictional multi-playlist file; TuneMyMusic's exact CSV headers not verified |
-| Accounts (handle + password), demo mode, sessions | ✅ | |
+| Accounts (handle + password), sessions | ✅ | public launch 2026-10-18: demo sign-in, sample library and fictional listeners/Trees removed from production (Neon backup branch `backup-before-demo-removal-2026-10-18` kept); seed data remains for local development and tests |
 | File imports: CSV, Exportify, M3U, XSPF, JSON, pasted, manual | ✅ | |
 | Spotify data-export JSON and Apple Music/iTunes playlist exports | ✅ | parsed with fictional samples of each format; not yet tried with a real export file |
 | Playlist → CSV converter (`/convert`, no account needed) | ✅ | editable sheet, download/copy, hands the same CSV to import; nothing stored |
@@ -33,13 +33,18 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 | Social discovery: search, similar listeners, public profiles, comparison | ✅ | |
 | Privacy controls, export, deletion | ✅ | |
 | Tree chat (realtime, replies, refs, links, moderation, rate limits) | ✅ | |
+| Your Trees (joined, with last message and unread count) separate from *Explore similar Trees* (not joined only); *Joined* badges | ✅ | integration + UI tests; browser-verified desktop, 375 px and 320 px |
+| Notifications: unread badge on *Trees*, in-app pop-up with *Open*, phone/desktop notifications while in the background, tap opens the chat | ✅ / 📱 | unread counts (read markers, muted/blocked/hidden/pre-join excluded) and the service-worker tap handler are tested; Android notifications need APK 0.1.9; checks pause after 30 idle minutes so a forgotten tab does not keep the database awake |
+| Music shared in Trees (share a playlist with a note, song list for members, remove/leave withdraws, chat card) | ✅ | integration-tested (membership, ownership, moderator removal, privacy unchanged); browser-verified |
+| Phone fit: no drawing under the status/gesture bar, opaque account menu sheet, inline member actions, stacked chat composer | ✅ | the fix is in the website, so installed apps get it without reinstalling; browser-verified at 375 and 320 px |
+| Live background (sound-wave lines and drifting specks that follow the mouse, ripple on taps, flow on scroll) | ✅ | still frame with *reduce motion*; pauses when hidden; 30 fps on touch screens; unit-tested wave maths |
 | Block / mute / report / moderation queue | ✅ | admin UI is minimal (API + per-message actions) |
 | 1:1 voice/video calls | 🟡 | signalling/authorisation tested on a real WS server; UI built; real two-device media **not verified**; no TURN configured |
 | Group calls | ⏳ | intentionally not built (cost/complexity) |
 | PostgreSQL storage (Neon in production, PGlite locally) | ✅ | all tests on PGlite; production bundle verified against Neon |
 | Installable web app (PWA: manifest, icons, service worker, install prompt) | 🟡 | served and sandbox-tested; installing on a device not yet verified |
-| Free hosting (Render + Neon) | ✅ | live at <https://soundofmymind.onrender.com>; anonymous smoke test passed 2026-10-14 (pages, converter, demo Trees, manifest/service worker/icons, WebSocket and API auth gates) |
-| Vercel deployment (always up: CDN + on-demand functions in Singapore; chat by polling, calls off, enrichment in bursts, gzip uploads, daily cron) | 🧪 | built and smoke-tested in CI; the bundle ran against the production database; needs the owner to import the repository on Vercel |
+| Vercel deployment (always up: CDN + on-demand functions in Singapore; chat by polling, calls off, enrichment in bursts, gzip uploads, daily cron) | ✅ | primary site <https://somm-three.vercel.app>; deploys every push to `main` |
+| Free hosting (Render + Neon) | ✅ | backup at <https://soundofmymind.onrender.com>; anonymous smoke test passed 2026-10-14 |
 | Continuous deployment | ✅ | CI deploys `main` to Render through the deploy hook only after all checks pass, then confirms `/api/health` reports the new commit (verified with `b541d56`) |
 | Android APK (Capacitor shell, cloud-built and signed) | 🟡 | release `android-6` (0.1.6) published with install notes and SHA-256; anonymous download, server URL and signing key verified; installing on a phone is the owner's check |
 
@@ -50,9 +55,15 @@ Legend: ✅ done and verified · 🧪 implemented, verified with automated mocks
 * Tempo/energy are only available from user files (no permitted provider source).
 * No email, so no password recovery; no 2FA.
 * In-memory rate limiting and WebSocket fan-out assume a single instance.
-* The free Render service is kept awake by self-pings (one service fits Render's 750 free hours); after a deploy or a
-  platform restart the first visit can still wait about a minute.
-* The Android app needs a connection (it opens the hosted site); it shows a retry page while the server wakes.
+* The free Render backup is kept awake by self-pings; after a deploy or a platform restart its first visit can still
+  wait about a minute. The primary Vercel site does not sleep (the first request after a quiet spell can take a second
+  or two while the database wakes).
+* On Vercel, chat updates by polling every few seconds and calls are off (no WebSocket server there).
+* Phone/desktop notifications arrive while SOMM is open or in the background; with the app or tab fully closed there is
+  no push service yet, so new messages show as unread badges on the next visit.
+* Trees need enough compatible real listeners: with the fictional listeners gone, early users see few or no
+  suggestions until more people join.
+* The Android app needs a connection (it opens the hosted site).
 * Apple Music library import requires a MusicKit JS sign-in screen that is not yet built (catalogue playlist URLs work once configured).
 * The map is capped for very large libraries (160 artists / 600 tracks shown, rest collapsed and listed).
 * The 3D view is a canvas: screen readers use the 2D map (focusable nodes) or the list view, which show the same data.

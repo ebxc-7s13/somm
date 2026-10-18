@@ -27,7 +27,7 @@ SOMM is **not** a music player, a Spotify clone, a recommendation chatbot or a g
 ## Users and core journey
 
 **Import → process → Music Map → Music Mind → matching Trees → join → chat.** No questionnaire.
-A demo mode (24-hour temporary account + fictional sample library + fictional community) lets anyone
+(Development only — production refuses it since the public launch on 2026-10-18.) A demo mode (24-hour temporary account + fictional sample library + fictional community) lets anyone
 walk the whole journey without credentials.
 
 ## Features

@@ -42,8 +42,9 @@ The repository contains a Blueprint, [`render.yaml`](../render.yaml): one free w
    name as taken, it adds a suffix: then set `SOMM_APP_URL` to the address Render shows and rebuild the APK.
 
 What the Blueprint sets: `NODE_ENV=production`, `HOST=0.0.0.0`, `NODE_VERSION=22`, a generated
-`TOKEN_ENCRYPTION_KEY` (256-bit, created once by Render), `DEMO_MODE_ENABLED=true` and `SEED_DEMO_ON_START=true` (the
-fictional demo listeners and Trees are seeded once, in the background after start-up). `PUBLIC_URL` defaults to the
+`TOKEN_ENCRYPTION_KEY` (256-bit, created once by Render) and `DEMO_MODE_ENABLED=false` — SOMM is public, so there is
+no demo sign-in and no fictional data in production (the server refuses demo mode whenever `NODE_ENV=production`,
+whatever the variable says). `PUBLIC_URL` defaults to the
 service’s own `https://…onrender.com` URL and client IPs are read from `X-Forwarded-For` automatically on Render. Set
 `PUBLIC_URL` explicitly if you add a custom domain.
 
@@ -241,8 +242,7 @@ schedule `pg_dump` and test restores.
 | `HOST`, `PORT` | `0.0.0.0`; `PORT` is provided by Render |
 | `TRUST_PROXY` | `true` behind a reverse proxy (automatic on Render) |
 | `TOKEN_ENCRYPTION_KEY` | required for provider connections; rotate = all users reconnect |
-| `DEMO_MODE_ENABLED` | `true` for public demos, otherwise `false` |
-| `SEED_DEMO_ON_START` | `true` only for demo deployments (fictional data) |
+| `DEMO_MODE_ENABLED` | development only: `true` enables the 24-hour throwaway sign-in; always off in production |
 | `ADMIN_HANDLES` | comma-separated moderator-of-everything handles |
 | `MUSICBRAINZ_CONTACT` | an email or URL MusicBrainz can use to reach you; in production it defaults to the project page |
 | `ITUNES_LOOKUP_ENABLED` | optional |
@@ -274,7 +274,7 @@ schedule `pg_dump` and test restores.
 - [ ] `npm run check` green on the release commit (CI runs it on every push)
 - [ ] `MUSICBRAINZ_CONTACT` set; `npm run smoke:metadata` succeeds from the server
 - [ ] Provider credentials added (optional) and each provider tried with a real account
-- [ ] `DEMO_MODE_ENABLED` / `SEED_DEMO_ON_START` set deliberately
+- [ ] No fictional data in the production database (`SELECT COUNT(*) FROM users WHERE is_demo <> 0` → 0)
 - [ ] `ADMIN_HANDLES` set; report queue checked regularly
 - [ ] TURN configured if calls are enabled; a real two-device call tested
 - [ ] Android: `SOMM_APP_URL` set, keystore backed up outside GitHub, APK installed and signed in on a real phone

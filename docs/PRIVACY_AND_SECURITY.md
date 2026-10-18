@@ -4,7 +4,7 @@
 
 | Data | Required? | Notes |
 | --- | --- | --- |
-| Handle, password hash | yes (or a 24-h demo account) | pseudonymous; no email, legal name, birth date, contacts, location or demographics |
+| Handle, password hash | yes | pseudonymous; no email, legal name, birth date, contacts, location or demographics |
 | Display name, bio | no | free text, length-limited |
 | Imported playlist metadata | for the core feature | titles/artists/albums/IDs — never audio, never local file paths |
 | Provider OAuth tokens | only if you connect a provider | encrypted at rest, deletable via Disconnect |
@@ -92,7 +92,12 @@ admin handle (`ADMIN_HANDLES`). Cross-user isolation is covered by `api-security
 * `DELETE /api/me/library` — all playlists, profiles, matches, jobs; orphaned catalogue rows are pruned.
 * `DELETE /api/me` (type your handle) — account and everything it owns (cascade), Trees recomputed.
 * Disconnect provider — deletes its tokens immediately.
-* Housekeeping every 15 min: expired sessions, drafts, OAuth states, cache, 24-h demo accounts, YouTube data past 30 days.
+* Housekeeping every 15 min: expired sessions, drafts, OAuth states, cache, YouTube data past 30 days (and 24-h demo
+  accounts, which exist only in local development: production refuses demo mode).
+* Unread markers (`community_reads`) store only the last message ID you read in each Tree. Shared playlists
+  (`community_shares`) are visible to that Tree's members only, never change the playlist's own privacy setting, and
+  are withdrawn when you leave the Tree or delete the playlist. Notifications carry the Tree name, author and a
+  90-character excerpt and only open SOMM's own pages.
 
 ## Known gaps
 
